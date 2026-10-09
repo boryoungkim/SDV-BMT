@@ -1,0 +1,10 @@
+# MOCK blocking FakeDUT (Stage 1A, virtual clock). Fixed service time 40 ms.
+schema_version: 1
+dut_config_id: fake-blocking-40ms
+adapter: fake_blocking
+device: virtual-0
+max_inflight: 1
+runtime_options:
+  service_model:
+    kind: fixed
+    service_ns: 40_000_000

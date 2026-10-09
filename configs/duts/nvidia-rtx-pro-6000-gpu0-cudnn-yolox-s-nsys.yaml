@@ -1,0 +1,108 @@
+# Stage 2b-G real-model profiler cross-check configuration (ACTUAL): as nvidia-rtx-pro-6000-gpu0-cudnn-yolox-s
+# with NVTX request ranges, run under Nsight Systems (nsys profile --trace=cuda,nvtx). DUT.prepare fails unless a
+# profiler injection environment is present. A separate measurement configuration: never compared as equivalent
+# to a run without the profiler.
+schema_version: 1
+dut_config_id: nvidia-rtx-pro-6000-gpu0-cudnn-yolox-s-nsys
+adapter: nvidia_cuda
+device: GPU-f3e03bfa-61ab-acdf-0834-450de8becefc
+max_inflight: 1
+runtime_options:
+  residency: host_pinned
+  instrumentation: cuda_events
+  context_sched: blocking_sync
+  nvtx: true
+  profiler: nsys
+  cudnn:
+    math_type: default
+    algo_policy: pinned
+    workspace_limit_bytes: 268435456
+    # (algorithm, math type) per convolution in plan order, cuDNN 9.1.0 enum values:
+    # 1 = IMPLICIT_PRECOMP_GEMM, 7 = WINOGRAD_NONFUSED; math type 0 = CUDNN_DEFAULT_MATH.
+    # Obtained from the heuristic policy (cudnnGetConvolutionForwardAlgorithm_v7, first supported deterministic
+    # result within the workspace limit) on this device and library; table SHA-256 2e6341d834863a9f2ed6f70ea0a913eff1e12b1e0c5ecbfbf31bb37b8831c64b.
+    algorithms:
+      - [1, 0]   # conv 0
+      - [1, 0]   # conv 1
+      - [1, 0]   # conv 2
+      - [1, 0]   # conv 3
+      - [1, 0]   # conv 4
+      - [1, 0]   # conv 5
+      - [1, 0]   # conv 6
+      - [1, 0]   # conv 7
+      - [1, 0]   # conv 8
+      - [1, 0]   # conv 9
+      - [1, 0]   # conv 10
+      - [1, 0]   # conv 11
+      - [1, 0]   # conv 12
+      - [1, 0]   # conv 13
+      - [1, 0]   # conv 14
+      - [1, 0]   # conv 15
+      - [1, 0]   # conv 16
+      - [1, 0]   # conv 17
+      - [1, 0]   # conv 18
+      - [1, 0]   # conv 19
+      - [1, 0]   # conv 20
+      - [1, 0]   # conv 21
+      - [1, 0]   # conv 22
+      - [1, 0]   # conv 23
+      - [1, 0]   # conv 24
+      - [1, 0]   # conv 25
+      - [1, 0]   # conv 26
+      - [1, 0]   # conv 27
+      - [1, 0]   # conv 28
+      - [1, 0]   # conv 29
+      - [1, 0]   # conv 30
+      - [1, 0]   # conv 31
+      - [1, 0]   # conv 32
+      - [7, 0]   # conv 33
+      - [1, 0]   # conv 34
+      - [1, 0]   # conv 35
+      - [1, 0]   # conv 36
+      - [1, 0]   # conv 37
+      - [1, 0]   # conv 38
+      - [1, 0]   # conv 39
+      - [1, 0]   # conv 40
+      - [1, 0]   # conv 41
+      - [1, 0]   # conv 42
+      - [1, 0]   # conv 43
+      - [1, 0]   # conv 44
+      - [1, 0]   # conv 45
+      - [1, 0]   # conv 46
+      - [1, 0]   # conv 47
+      - [1, 0]   # conv 48
+      - [1, 0]   # conv 49
+      - [1, 0]   # conv 50
+      - [1, 0]   # conv 51
+      - [1, 0]   # conv 52
+      - [1, 0]   # conv 53
+      - [1, 0]   # conv 54
+      - [1, 0]   # conv 55
+      - [1, 0]   # conv 56
+      - [7, 0]   # conv 57
+      - [1, 0]   # conv 58
+      - [1, 0]   # conv 59
+      - [1, 0]   # conv 60
+      - [1, 0]   # conv 61
+      - [1, 0]   # conv 62
+      - [1, 0]   # conv 63
+      - [1, 0]   # conv 64
+      - [1, 0]   # conv 65
+      - [1, 0]   # conv 66
+      - [1, 0]   # conv 67
+      - [1, 0]   # conv 68
+      - [1, 0]   # conv 69
+      - [1, 0]   # conv 70
+      - [1, 0]   # conv 71
+      - [1, 0]   # conv 72
+      - [1, 0]   # conv 73
+      - [1, 0]   # conv 74
+      - [1, 0]   # conv 75
+      - [7, 0]   # conv 76
+      - [7, 0]   # conv 77
+      - [1, 0]   # conv 78
+      - [7, 0]   # conv 79
+      - [7, 0]   # conv 80
+      - [1, 0]   # conv 81
+      - [1, 0]   # conv 82
+  frequency_probe_cycles: 20000

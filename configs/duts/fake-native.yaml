@@ -1,0 +1,9 @@
+# MOCK native measurement plane (Stage 1R): the native runner with its fake backend. No device, no
+# accelerator work: a request completes on its first poll. Used for realtime conformance and the harness floor.
+schema_version: 1
+dut_config_id: fake-native
+adapter: fake_native
+device: host-only
+max_inflight: 1
+runtime_options:
+  polls_until_complete: 1

@@ -1,0 +1,28 @@
+# Model-level Metric Set v1 (approved 2026-10-08): YOLOX-S/COCO workload that declares the canonical task-quality
+# evaluator coco-detection-bbox/1. Identical to yolox-s-coco-v1.yaml (same model artifact, cuDNN plan, weights,
+# preprocess, postprocess and codec) except workload_id and quality_evaluator; a run with it freezes the ground
+# truth of its planned items in the bundle (quality_reference.jsonl, manifest v5) so COCO quality is evaluated
+# from the bundle alone. ACTUAL GPU reference accelerator; not an NPU result.
+schema_version: 1
+workload_id: yolox-s-coco-v1-quality
+implementation: yolox_coco
+task: coco-2017-object-detection
+artifact_sha256: c5c2d13e59ae883e6af3b45daea64af4833a4951c92d116ec270d9ddbe998063
+precision: fp32
+batch: 1
+preprocess: {id: yolox-letterbox-bilinear-bgr, version: "1"}
+postprocess: {id: yolox-decode-nms-coco, version: "1"}
+codec: {id: canonical-json-utf8, version: "1"}
+output_ready: canonical task output (COCO detections of the image after decode, class-aware NMS and top-100) encoded and appended to outputs.bin
+quality_evaluator: coco-detection-bbox/1
+options:
+  device_program:
+    language: cudnn_plan
+    plan: models/yolox-s/yolox_s.plan.json
+    plan_sha256: d17fd39be7c260a4415fa6a13b9c14b985d5d329c72a0d9a04c91c872ed83ef5
+    weights: models/yolox-s/yolox_s.weights.f32
+    weights_sha256: 559b135c4efbf864a6edbb08fe963d57bd0772b212ab7aecafbdd0fd731e63e0
+    input_bytes: 4915200
+    output_bytes: 2856032
+    task_output_bytes: 2856000
+    timing_offset: 2856000

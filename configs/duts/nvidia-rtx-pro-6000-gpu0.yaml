@@ -1,0 +1,12 @@
+# Stage 1R-G reference accelerator (ACTUAL): NVIDIA RTX PRO 6000 Blackwell Max-Q, GPU 0 (NUMA node 0),
+# selected by UUID. Prepared inputs in pinned host memory; per-request H2D inside the DUT-service
+# interval; CUDA-event segment timing. The exact device identity is detected at runtime.
+schema_version: 1
+dut_config_id: nvidia-rtx-pro-6000-gpu0
+adapter: nvidia_cuda
+device: GPU-f3e03bfa-61ab-acdf-0834-450de8becefc
+max_inflight: 1
+runtime_options:
+  residency: host_pinned
+  instrumentation: cuda_events
+  context_sched: blocking_sync

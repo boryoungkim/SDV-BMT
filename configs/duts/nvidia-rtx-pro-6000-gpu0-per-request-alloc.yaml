@@ -1,0 +1,13 @@
+# Stage 2b-G buffer-lifecycle characterization variant (ACTUAL, declared design option): the device
+# input buffer is allocated in submit (cuMemAlloc) and freed by the completing poll (cuMemFree), so
+# allocation/release are inside DUT-service. For characterization only, not a baseline configuration.
+schema_version: 1
+dut_config_id: nvidia-rtx-pro-6000-gpu0-per-request-alloc
+adapter: nvidia_cuda
+device: GPU-f3e03bfa-61ab-acdf-0834-450de8becefc
+max_inflight: 1
+runtime_options:
+  residency: host_pinned
+  instrumentation: cuda_events
+  context_sched: blocking_sync
+  buffer_policy: per_request_alloc

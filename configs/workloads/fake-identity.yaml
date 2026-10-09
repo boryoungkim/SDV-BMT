@@ -1,0 +1,14 @@
+# MOCK fake workload (Stage 1A). No model artifact; deterministic preprocess/postprocess/codec.
+schema_version: 1
+workload_id: fake-identity
+implementation: fake_identity
+task: fake-identity
+artifact_sha256: null
+precision: none
+batch: 1
+preprocess: {id: fake-prefix-preprocess, version: "1"}
+postprocess: {id: fake-identity-postprocess, version: "1"}
+codec: {id: canonical-json-utf8, version: "1"}
+output_ready: canonical task output encoded and appended to outputs.bin
+quality_evaluator: null
+options: {}

@@ -1,0 +1,37 @@
+# Public CPU / portable CI for SDV-BMT.
+#
+# Hosted runners have no NVIDIA GPU, CUDA toolkit or cuDNN, so this job builds only the portable native
+# targets (fake runner + C++ unit tests) and runs the Python suite against them.  The NVIDIA device tests
+# report NOT RUN (skipped); tests that need the local COCO subset, the YOLOX model files or local evidence
+# bundles skip as well.  GPU validation is a separate local release step (see README, "Testing").
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  portable:
+    name: CPU / portable (Python 3.10, g++)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install (PyYAML runtime, pytest dev)
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -e ".[dev]"
+      - name: Build portable native targets
+        run: make -C native portable
+      - name: Native C++ unit tests
+        run: native/build/sdv-bmt-native-tests
+      - name: Python test suite (device tests report NOT RUN)
+        env:
+          SDV_BMT_MAKE_TARGETS: portable
+        run: .venv/bin/python -m pytest -q -rs -p no:cacheprovider

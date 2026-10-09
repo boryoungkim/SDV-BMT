@@ -1,0 +1,18 @@
+# Stage 1R-G reference accelerator conformance input: 32 synthetic 128x128 RGB images
+# (gradients, rings, stripes, noise; base64 payloads). Not a task dataset.
+schema_version: 1
+input_kind: dataset
+input_id: reference-images-32
+version: "1"
+family:
+  source_dataset: sdv-bmt-synthetic-reference-images
+  source_version: "1"
+  task: reference-conformance
+  annotation_schema: null
+  preprocessing_contract: sdv-ref-rgb8-to-chw512-f32/1
+source:
+  index: ../fixtures/reference-images-v1.index.jsonl
+  index_sha256: e60af9e864a0f465a4536b6bc142b2bd431f255e206409eb1c8bc72bc6b9bfdf
+selection:
+  start: 0
+  count: 32

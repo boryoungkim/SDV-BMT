@@ -1,0 +1,17 @@
+# MOCK fixture input (Stage 1A). Dataset input: no source timing, no scenario coordinates.
+schema_version: 1
+input_kind: dataset
+input_id: dataset-fixture-8
+version: "1"
+family:
+  source_dataset: fixture-dataset
+  source_version: "1"
+  task: fake-identity
+  annotation_schema: fake-label-v1
+  preprocessing_contract: fake-bytes-v1
+source:
+  index: ../fixtures/dataset-fixture-v1.index.jsonl
+  index_sha256: 6eb4a3252fd8a34094570f50035b963529eb4cc49c049d278a0654d86a4e0393
+selection:
+  start: 0
+  count: 8

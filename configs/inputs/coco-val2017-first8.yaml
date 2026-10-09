@@ -1,0 +1,19 @@
+# Stage 2b-G real-model baseline input: the first 8 images (by image id) of the COCO 2017 val subset built by
+# tools/stage2b_g_real/build_coco_subset.py from a local copy of COCO 2017 val (val2017/ + annotations/instances_val2017.json).
+# Payloads are the decoded RGB pixels (PPM, decoded once offline by Pillow); annotations are inline in the index.
+schema_version: 1
+input_kind: dataset
+input_id: coco-val2017-first8
+version: "1"
+family:
+  source_dataset: coco-2017-val-instances
+  source_version: "2017"
+  task: coco-2017-object-detection
+  annotation_schema: coco-2017-instances-bbox/1
+  preprocessing_contract: yolox-letterbox-bgr-chw640-f32/1
+source:
+  index: ../../datasets/coco-val2017-first1000/index.jsonl
+  index_sha256: 7f38fc3c3c352502e4b5355232eaa2e6693400181b20053bf4bba5f73ebd2c40
+selection:
+  start: 0
+  count: 8

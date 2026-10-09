@@ -1,0 +1,14 @@
+# Stage 1R-G instrumentation variant (ACTUAL): as nvidia-rtx-pro-6000-gpu0 plus NVTX request ranges and
+# admission/completion marks (domain sdv-bmt), without a profiler attached. Used to measure the NVTX cost
+# alone. Different instrumentation = different measurement.
+schema_version: 1
+dut_config_id: nvidia-rtx-pro-6000-gpu0-nvtx
+adapter: nvidia_cuda
+device: GPU-f3e03bfa-61ab-acdf-0834-450de8becefc
+max_inflight: 1
+runtime_options:
+  residency: host_pinned
+  instrumentation: cuda_events
+  context_sched: blocking_sync
+  nvtx: true
+  profiler: none

@@ -1,0 +1,12 @@
+# MOCK blocking FakeDUT (Stage 1A). TEST-ONLY divergent fused override: hashes a wrong prefix so
+# the input-equivalence check against the Workload reference path must fail.
+schema_version: 1
+dut_config_id: fake-blocking-25ms-fused-divergent
+adapter: fake_blocking
+device: virtual-0
+max_inflight: 1
+runtime_options:
+  service_model:
+    kind: fixed
+    service_ns: 25_000_000
+  input_override: {divergent: true}

@@ -1,0 +1,19 @@
+# G-3 (MOCK): Timeout and late completion. Request timeout 50 ms, FakeDUT 100 ms, 12.5 Hz (80 ms).
+schema_version: 1
+experiment_id: g3-timeout-late-completion
+execution_kind: mock
+input: ../inputs/dataset-fixture-3.yaml
+workload: ../workloads/fake-identity.yaml
+dut: ../duts/fake-blocking-100ms.yaml
+stress: {spec: ../stress/fake-virtual-axis.yaml, level: none}
+replay: {mode: fixed_rate, rate_hz: 12.5}
+run:
+  max_inflight: 1
+  queue_capacity: 0
+  on_full: drop_new
+  request_timeout_ns: 50_000_000
+  drain_ns: 200_000_000
+  output_capture: task_output_all
+  on_request_error: continue
+evaluation:
+  deadline: {policy: frame_period, period_ns: 80_000_000}

@@ -1,0 +1,18 @@
+# Stage 2b-G repeated identical-input characterization: reference image 0 repeated 128 times
+# (distinct item ids, identical payload bytes). Synthetic conformance input, not a task dataset.
+schema_version: 1
+input_kind: dataset
+input_id: reference-images-repeat0-128
+version: "1"
+family:
+  source_dataset: sdv-bmt-synthetic-reference-images-repeated
+  source_version: "1"
+  task: reference-conformance
+  annotation_schema: null
+  preprocessing_contract: sdv-ref-rgb8-to-chw512-f32/1
+source:
+  index: ../fixtures/reference-images-v1-repeat0.index.jsonl
+  index_sha256: 407bd3c88b8c3e87fdc68a9e34125eb7e844f145e99d1f7fed9d13cf73d9e0c3
+selection:
+  start: 0
+  count: 128

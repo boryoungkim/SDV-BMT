@@ -1,0 +1,19 @@
+# Stage 2b-G real-model baseline (ACTUAL): GPU 0 executing a cuDNN plan (cuDNN 9, approved 2026-10-08).
+# Algorithm policy "heuristic": every convolution takes the first cudnnGetConvolutionForwardAlgorithm_v7 result
+# that is supported, deterministic and within the workspace limit; the realized table is recorded in the
+# dut.prepare facts. Used once to obtain the table that the "pinned" configuration then declares.
+# Frequency probe: one thread spinning 20000 SM cycles first in each request (instrumentation).
+schema_version: 1
+dut_config_id: nvidia-rtx-pro-6000-gpu0-cudnn-heuristic
+adapter: nvidia_cuda
+device: GPU-f3e03bfa-61ab-acdf-0834-450de8becefc
+max_inflight: 1
+runtime_options:
+  residency: host_pinned
+  instrumentation: cuda_events
+  context_sched: blocking_sync
+  cudnn:
+    math_type: default
+    algo_policy: heuristic
+    workspace_limit_bytes: 268435456
+  frequency_probe_cycles: 20000

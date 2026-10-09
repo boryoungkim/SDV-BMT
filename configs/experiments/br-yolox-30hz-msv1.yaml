@@ -1,0 +1,33 @@
+# Model-level Metric Set v1 canonical GPU bundle (approved 2026-10-08: minimal GPU rerun to produce a bundle with the
+# frozen task-quality reference). Same configuration as br-yolox-30hz.yaml (YOLOX-S cuDNN plan with the pinned
+# algorithm table, COCO val2017 first 1000 images, 30 Hz, N=1, queue 0, drop_new, 32 precondition requests, deadline =
+# frame period 33.333333 ms, the same GPU-capture output reference) except the workload, which declares the quality
+# evaluator coco-detection-bbox/1. ACTUAL, reference_accelerator_validation; GPU 0; not an NPU result, not a ranking.
+schema_version: 1
+experiment_id: br-yolox-30hz-msv1
+execution_kind: actual
+seed: 0
+repetitions: 1
+input: ../inputs/coco-val2017-first1000.yaml
+workload: ../workloads/yolox-s-coco-v1-quality.yaml
+dut: ../duts/nvidia-rtx-pro-6000-gpu0-cudnn-yolox-s.yaml
+stress: {spec: ../stress/fake-virtual-axis.yaml, level: none}
+replay: {mode: fixed_rate, rate_hz: 30, lead_ns: 2_000_000}
+run:
+  max_inflight: 1
+  queue_capacity: 0
+  on_full: drop_new
+  request_timeout_ns: 1_000_000_000
+  drain_ns: 1_000_000_000
+  output_capture: task_output_all
+  on_request_error: continue
+evaluation:
+  deadline: {policy: frame_period, period_ns: 33_333_333}
+  output_reference:
+    kind: external_golden
+    path: ../references/coco-val2017-first1000.yolox-s-coco-v1.gpu-capture.golden.jsonl
+    sha256: 27116e2a7070a422096de15f1826951de52b74a4d71c7044e601927985a5e2e2
+realtime:
+  cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47]
+  wait_policy: spin
+  precondition_requests: 32

@@ -1,0 +1,11 @@
+# Stage 1R-G instrumentation variant (ACTUAL): as nvidia-rtx-pro-6000-gpu0 but without CUDA-event segment
+# timing (only a completion event; no device_timing). Different instrumentation = different measurement.
+schema_version: 1
+dut_config_id: nvidia-rtx-pro-6000-gpu0-no-events
+adapter: nvidia_cuda
+device: GPU-f3e03bfa-61ab-acdf-0834-450de8becefc
+max_inflight: 1
+runtime_options:
+  residency: host_pinned
+  instrumentation: none
+  context_sched: blocking_sync

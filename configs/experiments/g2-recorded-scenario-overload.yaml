@@ -1,0 +1,19 @@
+# G-2 (MOCK): Recorded scenario overload. Source times 0/33/66/99 ms, N=1, queue 0, FakeDUT 40 ms.
+schema_version: 1
+experiment_id: g2-recorded-scenario-overload
+execution_kind: mock
+input: ../inputs/scenario-g2-overload.yaml
+workload: ../workloads/fake-identity.yaml
+dut: ../duts/fake-blocking-40ms.yaml
+stress: {spec: ../stress/fake-virtual-axis.yaml, level: none}
+replay: {mode: recorded, speed: 1.0}
+run:
+  max_inflight: 1
+  queue_capacity: 0
+  on_full: drop_new
+  request_timeout_ns: 1_000_000_000
+  drain_ns: 1_000_000_000
+  output_capture: task_output_all
+  on_request_error: continue
+evaluation:
+  deadline: {policy: frame_period, period_ns: 33_000_000}

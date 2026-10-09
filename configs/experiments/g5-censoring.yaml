@@ -1,0 +1,21 @@
+# G-5 (MOCK): Censoring. 128 items at 20 Hz; table FakeDUT (see duts/fake-table-g5.yaml) with a
+# 100 ms request timeout -> 108 completed, 18 dropped, 2 timed out. Planned p90/p99 ranks fall in the
+# dropped/timed-out (+inf) region -> censored; completed p99 has >= 100 samples -> valid.
+schema_version: 1
+experiment_id: g5-censoring
+execution_kind: mock
+input: ../inputs/dataset-fixture-128.yaml
+workload: ../workloads/fake-identity.yaml
+dut: ../duts/fake-table-g5.yaml
+stress: {spec: ../stress/fake-virtual-axis.yaml, level: none}
+replay: {mode: fixed_rate, rate_hz: 20}
+run:
+  max_inflight: 1
+  queue_capacity: 0
+  on_full: drop_new
+  request_timeout_ns: 100_000_000
+  drain_ns: 200_000_000
+  output_capture: task_output_all
+  on_request_error: continue
+evaluation:
+  deadline: {policy: frame_period, period_ns: 50_000_000}

@@ -1,0 +1,32 @@
+# Stage 1R-G (ACTUAL, reference accelerator validation) on GPU 0, realtime harness pinned to NUMA node 0,
+# nominal (no stress), golden output reference from the independent CPU implementation. Not an NPU result.
+# Issue-lag characterization: as rg-gpu-fixed-rate-nominal at 280 Hz (period 3.57 ms, near the
+# ~3.2 ms DUT-service time).
+schema_version: 1
+experiment_id: rg-gpu-rate-280hz
+execution_kind: actual
+seed: 0
+repetitions: 1
+input: ../inputs/reference-images-128.yaml
+workload: ../workloads/reference-convnet-v1.yaml
+dut: ../duts/nvidia-rtx-pro-6000-gpu0.yaml
+stress: {spec: ../stress/fake-virtual-axis.yaml, level: none}
+replay: {mode: fixed_rate, rate_hz: 280, lead_ns: 2_000_000}
+run:
+  max_inflight: 1
+  queue_capacity: 0
+  on_full: drop_new
+  request_timeout_ns: 1_000_000_000
+  drain_ns: 1_000_000_000
+  output_capture: task_output_all
+  on_request_error: continue
+evaluation:
+  deadline: {policy: frame_period, period_ns: 3_571_428}
+  output_reference:
+    kind: external_golden
+    path: ../references/reference-images-v1.ref-convnet-v1.golden.jsonl
+    sha256: 10801c04311eb4e2f6a61484eef3ad4660b9ee540ee001d71fec88c43c51c456
+realtime:
+  cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47]
+  wait_policy: spin
+  precondition_requests: 0

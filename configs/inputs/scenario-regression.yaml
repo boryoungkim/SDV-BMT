@@ -1,0 +1,22 @@
+# MOCK fixture input (Stage 1A). Source timestamp regression: must be rejected at validation.
+schema_version: 1
+input_kind: driving_scenario
+input_id: scenario-regression
+version: "1"
+family:
+  source_dataset: fixture-drive-regression
+  source_version: "1"
+  task: fake-identity
+  annotation_schema: null
+  preprocessing_contract: fake-bytes-v1
+  streams: [cam_front, cam_rear]
+  timing:
+    source_field: t_capture_us
+    unit: us
+    semantic: capture
+    clock_source: fixture-camera-clock
+source:
+  index: ../fixtures/scenario-regression-v1.index.jsonl
+  index_sha256: aaa10c50904ed4d4f5e8ddc441498a046bf0a46a776245f18e49091a7050b67e
+selection:
+  stream_id: cam_front

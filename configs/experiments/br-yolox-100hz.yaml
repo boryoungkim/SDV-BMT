@@ -1,0 +1,33 @@
+# Stage 2b-G real-model baseline (ACTUAL, reference_accelerator_validation; GPU 0; not an NPU result, not a
+# GPU ranking). YOLOX-S (official COCO model, cuDNN plan with the pinned algorithm table) on COCO val2017 images,
+# realtime harness pinned to NUMA node 0, nominal (no stress), N=1, queue 0, drop_new, 32 untimed precondition
+# requests. Output reference = the reference-capture run's encoded outputs (determinism/corruption diagnostic only).
+# Baseline at 100 Hz (rate of the v01 reference-workload baseline), 1000 images, deadline = 10 ms.
+schema_version: 1
+experiment_id: br-yolox-100hz
+execution_kind: actual
+seed: 0
+repetitions: 1
+input: ../inputs/coco-val2017-first1000.yaml
+workload: ../workloads/yolox-s-coco-v1.yaml
+dut: ../duts/nvidia-rtx-pro-6000-gpu0-cudnn-yolox-s.yaml
+stress: {spec: ../stress/fake-virtual-axis.yaml, level: none}
+replay: {mode: fixed_rate, rate_hz: 100, lead_ns: 2_000_000}
+run:
+  max_inflight: 1
+  queue_capacity: 0
+  on_full: drop_new
+  request_timeout_ns: 1_000_000_000
+  drain_ns: 1_000_000_000
+  output_capture: task_output_all
+  on_request_error: continue
+evaluation:
+  deadline: {policy: frame_period, period_ns: 10_000_000}
+  output_reference:
+    kind: external_golden
+    path: ../references/coco-val2017-first1000.yolox-s-coco-v1.gpu-capture.golden.jsonl
+    sha256: 27116e2a7070a422096de15f1826951de52b74a4d71c7044e601927985a5e2e2
+realtime:
+  cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47]
+  wait_policy: spin
+  precondition_requests: 32

@@ -1,0 +1,23 @@
+# MOCK fixture input (Stage 1A). Recorded driving scenario with typed source timing.
+schema_version: 1
+input_kind: driving_scenario
+input_id: scenario-g2-overload
+version: "1"
+family:
+  source_dataset: fixture-drive
+  source_version: "1"
+  task: fake-identity
+  annotation_schema: null
+  preprocessing_contract: fake-bytes-v1
+  streams: [cam_front, cam_rear]
+  timing:
+    source_field: t_capture_us
+    unit: us
+    semantic: capture
+    clock_source: fixture-camera-clock
+source:
+  index: ../fixtures/scenario-fixture-v1.index.jsonl
+  index_sha256: 8d01ddfd3b795b1033f846adf1dd27c867ce4da3a20c518e8d894b5f7d3ecca0
+selection:
+  stream_id: cam_front
+  episodes: [ep-g2]

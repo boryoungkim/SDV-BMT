@@ -1,0 +1,752 @@
+{
+  "metrics": [
+    {
+      "censored_fraction": null,
+      "definition_version": 1,
+      "execution_kind": "mock",
+      "inputs": [
+        "events.jsonl"
+      ],
+      "measurement_boundary_id": "cee9d9485234d825cf0d1eb8303f55f371e9089ef7e06b350f85f0ca5fd9e87e",
+      "method": "count of measure-phase planned requests by state",
+      "metric_id": "bmt.count.planned",
+      "n": 128,
+      "notes": [],
+      "status": "valid",
+      "status_reason": null,
+      "unit": "count",
+      "value": 128,
+      "window": {
+        "drain_cap_reached": false,
+        "t0_ns": 0,
+        "t_drain_end_ns": 6380000000,
+        "t_measure_begin_ns": 0
+      }
+    },
+    {
+      "censored_fraction": null,
+      "definition_version": 1,
+      "execution_kind": "mock",
+      "inputs": [
+        "events.jsonl"
+      ],
+      "measurement_boundary_id": "cee9d9485234d825cf0d1eb8303f55f371e9089ef7e06b350f85f0ca5fd9e87e",
+      "method": "count of measure-phase planned requests by state",
+      "metric_id": "bmt.count.issued",
+      "n": 128,
+      "notes": [],
+      "status": "valid",
+      "status_reason": null,
+      "unit": "count",
+      "value": 110,
+      "window": {
+        "drain_cap_reached": false,
+        "t0_ns": 0,
+        "t_drain_end_ns": 6380000000,
+        "t_measure_begin_ns": 0
+      }
+    },
+    {
+      "censored_fraction": null,
+      "definition_version": 1,
+      "execution_kind": "mock",
+      "inputs": [
+        "events.jsonl"
+      ],
+      "measurement_boundary_id": "cee9d9485234d825cf0d1eb8303f55f371e9089ef7e06b350f85f0ca5fd9e87e",
+      "method": "count of measure-phase planned requests by state",
+      "metric_id": "bmt.count.completed",
+      "n": 128,
+      "notes": [],
+      "status": "valid",
+      "status_reason": null,
+      "unit": "count",
+      "value": 108,
+      "window": {
+        "drain_cap_reached": false,
+        "t0_ns": 0,
+        "t_drain_end_ns": 6380000000,
+        "t_measure_begin_ns": 0
+      }
+    },
+    {
+      "censored_fraction": null,
+      "definition_version": 1,
+      "execution_kind": "mock",
+      "inputs": [
+        "events.jsonl"
+      ],
+      "measurement_boundary_id": "cee9d9485234d825cf0d1eb8303f55f371e9089ef7e06b350f85f0ca5fd9e87e",
+      "method": "count of measure-phase planned requests by state",
+      "metric_id": "bmt.count.dropped",
+      "n": 128,
+      "notes": [],
+      "status": "valid",
+      "status_reason": null,
+      "unit": "count",
+      "value": 18,
+      "window": {
+        "drain_cap_reached": false,
+        "t0_ns": 0,
+        "t_drain_end_ns": 6380000000,
+        "t_measure_begin_ns": 0
+      }
+    },
+    {
+      "censored_fraction": null,
+      "definition_version": 1,
+      "execution_kind": "mock",
+      "inputs": [
+        "events.jsonl"
+      ],
+      "measurement_boundary_id": "cee9d9485234d825cf0d1eb8303f55f371e9089ef7e06b350f85f0ca5fd9e87e",
+      "method": "count of measure-phase planned requests by state",
+      "metric_id": "bmt.count.timed_out",
+      "n": 128,
+      "notes": [],
+      "status": "valid",
+      "status_reason": null,
+      "unit": "count",
+      "value": 2,
+      "window": {
+        "drain_cap_reached": false,
+        "t0_ns": 0,
+        "t_drain_end_ns": 6380000000,
+        "t_measure_begin_ns": 0
+      }
+    },
+    {
+      "censored_fraction": null,
+      "definition_version": 1,
+      "execution_kind": "mock",
+      "inputs": [
+        "events.jsonl"
+      ],
+      "measurement_boundary_id": "cee9d9485234d825cf0d1eb8303f55f371e9089ef7e06b350f85f0ca5fd9e87e",
+      "method": "count of measure-phase planned requests by state",
+      "metric_id": "bmt.count.error",
+      "n": 128,
+      "notes": [],
+      "status": "valid",
+      "status_reason": null,
+      "unit": "count",
+      "value": 0,
+      "window": {
+        "drain_cap_reached": false,
+        "t0_ns": 0,
+        "t_drain_end_ns": 6380000000,
+        "t_measure_begin_ns": 0
+      }
+    },
+    {
+      "censored_fraction": null,
+      "definition_version": 1,
+      "execution_kind": "mock",
+      "inputs": [
+        "events.jsonl"
+      ],
+      "measurement_boundary_id": "cee9d9485234d825cf0d1eb8303f55f371e9089ef7e06b350f85f0ca5fd9e87e",
+      "method": "count of measure-phase planned requests by state",
+      "metric_id": "bmt.count.not_issued",
+      "n": 128,
+      "notes": [],
+      "status": "valid",
+      "status_reason": null,
+      "unit": "count",
+      "value": 0,
+      "window": {
+        "drain_cap_reached": false,
+        "t0_ns": 0,
+        "t_drain_end_ns": 6380000000,
+        "t_measure_begin_ns": 0
+      }
+    },
+    {
+      "censored_fraction": null,
+      "definition_version": 1,
+      "execution_kind": "mock",
+      "inputs": [
+        "events.jsonl"
+      ],
+      "measurement_boundary_id": "cee9d9485234d825cf0d1eb8303f55f371e9089ef7e06b350f85f0ca5fd9e87e",
+      "method": "timed-out requests whose underlying call later returned (not counted as completed)",
+      "metric_id": "bmt.diagnostic.late_completion.count",
+      "n": 2,
+      "notes": [
+        "late completions never change the count identity"
+      ],
+      "status": "valid",
+      "status_reason": null,
+      "unit": "count",
+      "value": 2,
+      "window": {
+        "drain_cap_reached": false,
+        "t0_ns": 0,
+        "t_drain_end_ns": 6380000000,
+        "t_measure_begin_ns": 0
+      }
+    },
+    {
+      "censored_fraction": null,
+      "definition_version": 1,
+      "execution_kind": "mock",
+      "inputs": [
+        "events.jsonl"
+      ],
+      "measurement_boundary_id": "cee9d9485234d825cf0d1eb8303f55f371e9089ef7e06b350f85f0ca5fd9e87e",
+      "method": "count.completed / count.planned",
+      "metric_id": "bmt.rate.completion",
+      "n": 128,
+      "notes": [],
+      "status": "valid",
+      "status_reason": null,
+      "unit": "ratio",
+      "value": 0.84375,
+      "window": {
+        "drain_cap_reached": false,
+        "t0_ns": 0,
+        "t_drain_end_ns": 6380000000,
+        "t_measure_begin_ns": 0
+      }
+    },
+    {
+      "censored_fraction": null,
+      "definition_version": 1,
+      "execution_kind": "mock",
+      "inputs": [
+        "events.jsonl"
+      ],
+      "measurement_boundary_id": "cee9d9485234d825cf0d1eb8303f55f371e9089ef7e06b350f85f0ca5fd9e87e",
+      "method": "count.dropped / count.planned",
+      "metric_id": "bmt.rate.drop",
+      "n": 128,
+      "notes": [],
+      "status": "valid",
+      "status_reason": null,
+      "unit": "ratio",
+      "value": 0.140625,
+      "window": {
+        "drain_cap_reached": false,
+        "t0_ns": 0,
+        "t_drain_end_ns": 6380000000,
+        "t_measure_begin_ns": 0
+      }
+    },
+    {
+      "censored_fraction": null,
+      "definition_version": 1,
+      "execution_kind": "mock",
+      "inputs": [
+        "events.jsonl"
+      ],
+      "measurement_boundary_id": "cee9d9485234d825cf0d1eb8303f55f371e9089ef7e06b350f85f0ca5fd9e87e",
+      "method": "count.timed_out / count.planned",
+      "metric_id": "bmt.rate.timeout",
+      "n": 128,
+      "notes": [],
+      "status": "valid",
+      "status_reason": null,
+      "unit": "ratio",
+      "value": 0.015625,
+      "window": {
+        "drain_cap_reached": false,
+        "t0_ns": 0,
+        "t_drain_end_ns": 6380000000,
+        "t_measure_begin_ns": 0
+      }
+    },
+    {
+      "censored_fraction": null,
+      "definition_version": 1,
+      "execution_kind": "mock",
+      "inputs": [
+        "events.jsonl"
+      ],
+      "measurement_boundary_id": "cee9d9485234d825cf0d1eb8303f55f371e9089ef7e06b350f85f0ca5fd9e87e",
+      "method": "count.error / count.planned",
+      "metric_id": "bmt.rate.error",
+      "n": 128,
+      "notes": [],
+      "status": "valid",
+      "status_reason": null,
+      "unit": "ratio",
+      "value": 0.0,
+      "window": {
+        "drain_cap_reached": false,
+        "t0_ns": 0,
+        "t_drain_end_ns": 6380000000,
+        "t_measure_begin_ns": 0
+      }
+    },
+    {
+      "censored_fraction": null,
+      "definition_version": 1,
+      "execution_kind": "mock",
+      "inputs": [
+        "events.jsonl"
+      ],
+      "measurement_boundary_id": "cee9d9485234d825cf0d1eb8303f55f371e9089ef7e06b350f85f0ca5fd9e87e",
+      "method": "nearest_rank: rank = ceil(p/100 * n), 1-based, over ascending values; values t_complete - t_sched of COMPLETED requests",
+      "metric_id": "bmt.latency.request_completion.completed.p50",
+      "n": 108,
+      "notes": [
+        "completed-only; interpret together with bmt.rate.completion"
+      ],
+      "status": "valid",
+      "status_reason": null,
+      "unit": "ns",
+      "value": 30000000,
+      "window": {
+        "drain_cap_reached": false,
+        "t0_ns": 0,
+        "t_drain_end_ns": 6380000000,
+        "t_measure_begin_ns": 0
+      }
+    },
+    {
+      "censored_fraction": 0.15625,
+      "definition_version": 1,
+      "execution_kind": "mock",
+      "inputs": [
+        "events.jsonl"
+      ],
+      "measurement_boundary_id": "cee9d9485234d825cf0d1eb8303f55f371e9089ef7e06b350f85f0ca5fd9e87e",
+      "method": "nearest_rank: rank = ceil(p/100 * n), 1-based, over ascending values; values t_complete - t_sched, non-completed planned = +inf; p99 needs >= 100 completed samples; rank on +inf -> censored (report-only)",
+      "metric_id": "bmt.latency.request_completion.planned.p50",
+      "n": 128,
+      "notes": [
+        "non-completed planned requests are +inf; censored results are report-only and carry value=null",
+        "p99 requires at least 100 completed samples"
+      ],
+      "status": "valid",
+      "status_reason": null,
+      "unit": "ns",
+      "value": 30000000,
+      "window": {
+        "drain_cap_reached": false,
+        "t0_ns": 0,
+        "t_drain_end_ns": 6380000000,
+        "t_measure_begin_ns": 0
+      }
+    },
+    {
+      "censored_fraction": null,
+      "definition_version": 1,
+      "execution_kind": "mock",
+      "inputs": [
+        "events.jsonl"
+      ],
+      "measurement_boundary_id": "cee9d9485234d825cf0d1eb8303f55f371e9089ef7e06b350f85f0ca5fd9e87e",
+      "method": "nearest_rank: rank = ceil(p/100 * n), 1-based, over ascending values; values t_complete - t_submit_begin of COMPLETED requests",
+      "metric_id": "bmt.latency.dut_service.p50",
+      "n": 108,
+      "notes": [
+        "DUT-service boundary of the virtual FakeDUT; not an NPU time"
+      ],
+      "status": "valid",
+      "status_reason": null,
+      "unit": "ns",
+      "value": 30000000,
+      "window": {
+        "drain_cap_reached": false,
+        "t0_ns": 0,
+        "t_drain_end_ns": 6380000000,
+        "t_measure_begin_ns": 0
+      }
+    },
+    {
+      "censored_fraction": null,
+      "definition_version": 1,
+      "execution_kind": "mock",
+      "inputs": [
+        "events.jsonl"
+      ],
+      "measurement_boundary_id": "cee9d9485234d825cf0d1eb8303f55f371e9089ef7e06b350f85f0ca5fd9e87e",
+      "method": "nearest_rank: rank = ceil(p/100 * n), 1-based, over ascending values; values t_output_ready - t_sched of COMPLETED requests",
+      "metric_id": "bmt.latency.output_ready.completed.p50",
+      "n": 108,
+      "notes": [
+        "Stage 1A virtual clock: host steps cost 0 ns, so output-ready equals request-completion for completed requests"
+      ],
+      "status": "valid",
+      "status_reason": null,
+      "unit": "ns",
+      "value": 30000000,
+      "window": {
+        "drain_cap_reached": false,
+        "t0_ns": 0,
+        "t_drain_end_ns": 6380000000,
+        "t_measure_begin_ns": 0
+      }
+    },
+    {
+      "censored_fraction": null,
+      "definition_version": 1,
+      "execution_kind": "mock",
+      "inputs": [
+        "events.jsonl"
+      ],
+      "measurement_boundary_id": "cee9d9485234d825cf0d1eb8303f55f371e9089ef7e06b350f85f0ca5fd9e87e",
+      "method": "nearest_rank: rank = ceil(p/100 * n), 1-based, over ascending values; values t_complete - t_sched of COMPLETED requests",
+      "metric_id": "bmt.latency.request_completion.completed.p90",
+      "n": 108,
+      "notes": [
+        "completed-only; interpret together with bmt.rate.completion"
+      ],
+      "status": "valid",
+      "status_reason": null,
+      "unit": "ns",
+      "value": 90000000,
+      "window": {
+        "drain_cap_reached": false,
+        "t0_ns": 0,
+        "t_drain_end_ns": 6380000000,
+        "t_measure_begin_ns": 0
+      }
+    },
+    {
+      "censored_fraction": 0.15625,
+      "definition_version": 1,
+      "execution_kind": "mock",
+      "inputs": [
+        "events.jsonl"
+      ],
+      "measurement_boundary_id": "cee9d9485234d825cf0d1eb8303f55f371e9089ef7e06b350f85f0ca5fd9e87e",
+      "method": "nearest_rank: rank = ceil(p/100 * n), 1-based, over ascending values; values t_complete - t_sched, non-completed planned = +inf; p99 needs >= 100 completed samples; rank on +inf -> censored (report-only)",
+      "metric_id": "bmt.latency.request_completion.planned.p90",
+      "n": 128,
+      "notes": [
+        "non-completed planned requests are +inf; censored results are report-only and carry value=null",
+        "p99 requires at least 100 completed samples"
+      ],
+      "status": "censored",
+      "status_reason": "rank_in_non_completed_region",
+      "unit": "ns",
+      "value": null,
+      "window": {
+        "drain_cap_reached": false,
+        "t0_ns": 0,
+        "t_drain_end_ns": 6380000000,
+        "t_measure_begin_ns": 0
+      }
+    },
+    {
+      "censored_fraction": null,
+      "definition_version": 1,
+      "execution_kind": "mock",
+      "inputs": [
+        "events.jsonl"
+      ],
+      "measurement_boundary_id": "cee9d9485234d825cf0d1eb8303f55f371e9089ef7e06b350f85f0ca5fd9e87e",
+      "method": "nearest_rank: rank = ceil(p/100 * n), 1-based, over ascending values; values t_complete - t_submit_begin of COMPLETED requests",
+      "metric_id": "bmt.latency.dut_service.p90",
+      "n": 108,
+      "notes": [
+        "DUT-service boundary of the virtual FakeDUT; not an NPU time"
+      ],
+      "status": "valid",
+      "status_reason": null,
+      "unit": "ns",
+      "value": 90000000,
+      "window": {
+        "drain_cap_reached": false,
+        "t0_ns": 0,
+        "t_drain_end_ns": 6380000000,
+        "t_measure_begin_ns": 0
+      }
+    },
+    {
+      "censored_fraction": null,
+      "definition_version": 1,
+      "execution_kind": "mock",
+      "inputs": [
+        "events.jsonl"
+      ],
+      "measurement_boundary_id": "cee9d9485234d825cf0d1eb8303f55f371e9089ef7e06b350f85f0ca5fd9e87e",
+      "method": "nearest_rank: rank = ceil(p/100 * n), 1-based, over ascending values; values t_output_ready - t_sched of COMPLETED requests",
+      "metric_id": "bmt.latency.output_ready.completed.p90",
+      "n": 108,
+      "notes": [
+        "Stage 1A virtual clock: host steps cost 0 ns, so output-ready equals request-completion for completed requests"
+      ],
+      "status": "valid",
+      "status_reason": null,
+      "unit": "ns",
+      "value": 90000000,
+      "window": {
+        "drain_cap_reached": false,
+        "t0_ns": 0,
+        "t_drain_end_ns": 6380000000,
+        "t_measure_begin_ns": 0
+      }
+    },
+    {
+      "censored_fraction": null,
+      "definition_version": 1,
+      "execution_kind": "mock",
+      "inputs": [
+        "events.jsonl"
+      ],
+      "measurement_boundary_id": "cee9d9485234d825cf0d1eb8303f55f371e9089ef7e06b350f85f0ca5fd9e87e",
+      "method": "nearest_rank: rank = ceil(p/100 * n), 1-based, over ascending values; values t_complete - t_sched of COMPLETED requests",
+      "metric_id": "bmt.latency.request_completion.completed.p99",
+      "n": 108,
+      "notes": [
+        "completed-only; interpret together with bmt.rate.completion"
+      ],
+      "status": "valid",
+      "status_reason": null,
+      "unit": "ns",
+      "value": 90000000,
+      "window": {
+        "drain_cap_reached": false,
+        "t0_ns": 0,
+        "t_drain_end_ns": 6380000000,
+        "t_measure_begin_ns": 0
+      }
+    },
+    {
+      "censored_fraction": 0.15625,
+      "definition_version": 1,
+      "execution_kind": "mock",
+      "inputs": [
+        "events.jsonl"
+      ],
+      "measurement_boundary_id": "cee9d9485234d825cf0d1eb8303f55f371e9089ef7e06b350f85f0ca5fd9e87e",
+      "method": "nearest_rank: rank = ceil(p/100 * n), 1-based, over ascending values; values t_complete - t_sched, non-completed planned = +inf; p99 needs >= 100 completed samples; rank on +inf -> censored (report-only)",
+      "metric_id": "bmt.latency.request_completion.planned.p99",
+      "n": 128,
+      "notes": [
+        "non-completed planned requests are +inf; censored results are report-only and carry value=null",
+        "p99 requires at least 100 completed samples"
+      ],
+      "status": "censored",
+      "status_reason": "rank_in_non_completed_region",
+      "unit": "ns",
+      "value": null,
+      "window": {
+        "drain_cap_reached": false,
+        "t0_ns": 0,
+        "t_drain_end_ns": 6380000000,
+        "t_measure_begin_ns": 0
+      }
+    },
+    {
+      "censored_fraction": null,
+      "definition_version": 1,
+      "execution_kind": "mock",
+      "inputs": [
+        "events.jsonl"
+      ],
+      "measurement_boundary_id": "cee9d9485234d825cf0d1eb8303f55f371e9089ef7e06b350f85f0ca5fd9e87e",
+      "method": "nearest_rank: rank = ceil(p/100 * n), 1-based, over ascending values; values t_complete - t_submit_begin of COMPLETED requests",
+      "metric_id": "bmt.latency.dut_service.p99",
+      "n": 108,
+      "notes": [
+        "DUT-service boundary of the virtual FakeDUT; not an NPU time"
+      ],
+      "status": "valid",
+      "status_reason": null,
+      "unit": "ns",
+      "value": 90000000,
+      "window": {
+        "drain_cap_reached": false,
+        "t0_ns": 0,
+        "t_drain_end_ns": 6380000000,
+        "t_measure_begin_ns": 0
+      }
+    },
+    {
+      "censored_fraction": null,
+      "definition_version": 1,
+      "execution_kind": "mock",
+      "inputs": [
+        "events.jsonl"
+      ],
+      "measurement_boundary_id": "cee9d9485234d825cf0d1eb8303f55f371e9089ef7e06b350f85f0ca5fd9e87e",
+      "method": "nearest_rank: rank = ceil(p/100 * n), 1-based, over ascending values; values t_output_ready - t_sched of COMPLETED requests",
+      "metric_id": "bmt.latency.output_ready.completed.p99",
+      "n": 108,
+      "notes": [
+        "Stage 1A virtual clock: host steps cost 0 ns, so output-ready equals request-completion for completed requests"
+      ],
+      "status": "valid",
+      "status_reason": null,
+      "unit": "ns",
+      "value": 90000000,
+      "window": {
+        "drain_cap_reached": false,
+        "t0_ns": 0,
+        "t_drain_end_ns": 6380000000,
+        "t_measure_begin_ns": 0
+      }
+    },
+    {
+      "censored_fraction": null,
+      "definition_version": 1,
+      "execution_kind": "mock",
+      "inputs": [
+        "events.jsonl"
+      ],
+      "measurement_boundary_id": "cee9d9485234d825cf0d1eb8303f55f371e9089ef7e06b350f85f0ca5fd9e87e",
+      "method": "nearest_rank: rank = ceil(p/100 * n), 1-based, over ascending values; values t_issue - t_sched of issued requests",
+      "metric_id": "bmt.issue_lag.p99",
+      "n": 110,
+      "notes": [
+        "virtual clock: schedule diagnostic only, not replay fidelity"
+      ],
+      "status": "valid",
+      "status_reason": null,
+      "unit": "ns",
+      "value": 0,
+      "window": {
+        "drain_cap_reached": false,
+        "t0_ns": 0,
+        "t_drain_end_ns": 6380000000,
+        "t_measure_begin_ns": 0
+      }
+    },
+    {
+      "censored_fraction": null,
+      "definition_version": 1,
+      "execution_kind": "mock",
+      "inputs": [
+        "events.jsonl"
+      ],
+      "measurement_boundary_id": "cee9d9485234d825cf0d1eb8303f55f371e9089ef7e06b350f85f0ca5fd9e87e",
+      "method": "max(t_issue - t_sched) of issued requests",
+      "metric_id": "bmt.issue_lag.max",
+      "n": 110,
+      "notes": [
+        "virtual clock: schedule diagnostic only, not replay fidelity"
+      ],
+      "status": "valid",
+      "status_reason": null,
+      "unit": "ns",
+      "value": 0,
+      "window": {
+        "drain_cap_reached": false,
+        "t0_ns": 0,
+        "t_drain_end_ns": 6380000000,
+        "t_measure_begin_ns": 0
+      }
+    },
+    {
+      "censored_fraction": null,
+      "definition_version": 1,
+      "execution_kind": "mock",
+      "inputs": [
+        "events.jsonl"
+      ],
+      "measurement_boundary_id": "cee9d9485234d825cf0d1eb8303f55f371e9089ef7e06b350f85f0ca5fd9e87e",
+      "method": "count.completed / ((t_drain_end - t0) / 1e9), t0 = first planned t_sched; configured-N throughput",
+      "metric_id": "bmt.throughput.completed_per_s",
+      "n": 128,
+      "notes": [
+        "configured max_inflight=1 throughput; not a maximum-throughput claim",
+        "window = [t0 (first planned t_sched), drain end] on the virtual clock"
+      ],
+      "status": "valid",
+      "status_reason": null,
+      "unit": "1/s",
+      "value": 16.927899686520377,
+      "window": {
+        "drain_cap_reached": false,
+        "t0_ns": 0,
+        "t_drain_end_ns": 6380000000,
+        "t_measure_begin_ns": 0
+      }
+    },
+    {
+      "censored_fraction": null,
+      "definition_version": 1,
+      "execution_kind": "mock",
+      "inputs": [
+        "events.jsonl",
+        "run_spec.json"
+      ],
+      "measurement_boundary_id": "cee9d9485234d825cf0d1eb8303f55f371e9089ef7e06b350f85f0ca5fd9e87e",
+      "method": "(planned - 1) / ((t_sched_last - t_sched_first) / 1e9); fixed_rate/recorded only",
+      "metric_id": "bmt.offered_rate_per_s",
+      "n": 128,
+      "notes": [],
+      "status": "valid",
+      "status_reason": null,
+      "unit": "1/s",
+      "value": 20.0,
+      "window": {
+        "drain_cap_reached": false,
+        "t0_ns": 0,
+        "t_drain_end_ns": 6380000000,
+        "t_measure_begin_ns": 0
+      }
+    },
+    {
+      "censored_fraction": null,
+      "definition_version": 1,
+      "execution_kind": "mock",
+      "inputs": [
+        "events.jsonl"
+      ],
+      "measurement_boundary_id": "cee9d9485234d825cf0d1eb8303f55f371e9089ef7e06b350f85f0ca5fd9e87e",
+      "method": "planned requests not COMPLETED with t_complete <= t_sched + deadline.period_ns, / planned",
+      "metric_id": "bmt.deadline.miss_rate",
+      "n": 128,
+      "notes": [
+        "deadline_i = t_sched_i + 50000000 ns (policy frame_period); evaluation parameter",
+        "miss = planned request not COMPLETED with t_complete <= deadline_i"
+      ],
+      "status": "valid",
+      "status_reason": null,
+      "unit": "ratio",
+      "value": 0.265625,
+      "window": {
+        "drain_cap_reached": false,
+        "t0_ns": 0,
+        "t_drain_end_ns": 6380000000,
+        "t_measure_begin_ns": 0
+      }
+    },
+    {
+      "censored_fraction": null,
+      "definition_version": 1,
+      "execution_kind": "mock",
+      "inputs": [
+        "events.jsonl",
+        "outputs.bin",
+        "run_spec.json",
+        "input_items.jsonl"
+      ],
+      "measurement_boundary_id": "cee9d9485234d825cf0d1eb8303f55f371e9089ef7e06b350f85f0ca5fd9e87e",
+      "method": "COMPLETED outputs whose sha256 equals the designated reference for the same item, / COMPLETED outputs that have a reference entry",
+      "metric_id": "bmt.output.identity_rate",
+      "n": 0,
+      "notes": [
+        "no output reference was designated in the plan before the run"
+      ],
+      "status": "not_applicable",
+      "status_reason": "no_reference_designated",
+      "unit": "ratio",
+      "value": null,
+      "window": {
+        "drain_cap_reached": false,
+        "t0_ns": 0,
+        "t_drain_end_ns": 6380000000,
+        "t_measure_begin_ns": 0
+      }
+    }
+  ],
+  "parameters": {
+    "catalog_version": "bmt-portable-v1-stage1a",
+    "deadline": {
+      "period_ns": 50000000,
+      "policy": "frame_period"
+    },
+    "output_reference": {
+      "kind": "none"
+    },
+    "p99_min_samples": 100,
+    "percentile_method": "nearest_rank: rank = ceil(p/100 * n), 1-based, over ascending values",
+    "planned_percentile_noncompleted_value": "+inf"
+  }
+}

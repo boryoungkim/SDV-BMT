@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=70.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sdv-bmt"
+version = "0.1.0"
+description = "SDV-BMT: Model-level accelerator benchmark core (C++ measurement plane, Python evaluation plane)"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.10"
+# Stage 1A approval: PyYAML is the only runtime dependency.
+dependencies = ["PyYAML>=6.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.scripts]
+sdv-bmt = "sdv_bmt.cli.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"

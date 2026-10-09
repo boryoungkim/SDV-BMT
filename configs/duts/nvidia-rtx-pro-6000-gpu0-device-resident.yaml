@@ -1,0 +1,11 @@
+# Stage 1R-G residency variant (ACTUAL): prepared inputs copied to per-item device buffers during
+# PREPARE_INPUTS (verified by read-back); no per-request H2D, so H2D is excluded from DUT-service.
+schema_version: 1
+dut_config_id: nvidia-rtx-pro-6000-gpu0-device-resident
+adapter: nvidia_cuda
+device: GPU-f3e03bfa-61ab-acdf-0834-450de8becefc
+max_inflight: 1
+runtime_options:
+  residency: device_resident
+  instrumentation: cuda_events
+  context_sched: blocking_sync

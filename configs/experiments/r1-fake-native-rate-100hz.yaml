@@ -1,0 +1,26 @@
+# Stage 1R (MOCK): native realtime harness floor on the host monotonic clock with the fake backend of the
+# native measurement plane (no device, no accelerator work; a request completes on its first poll). The
+# reference conformance workload supplies inputs and the output pipeline. Process pinned to NUMA node 0.
+# 128 items at 100 Hz.
+schema_version: 1
+experiment_id: r1-fake-native-rate-100hz
+execution_kind: mock
+seed: 0
+repetitions: 1
+input: ../inputs/reference-images-128.yaml
+workload: ../workloads/reference-convnet-v1.yaml
+dut: ../duts/fake-native.yaml
+stress: {spec: ../stress/fake-virtual-axis.yaml, level: none}
+replay: {mode: fixed_rate, rate_hz: 100, lead_ns: 1_000_000}
+run:
+  max_inflight: 1
+  queue_capacity: 0
+  on_full: drop_new
+  request_timeout_ns: 100_000_000
+  drain_ns: 100_000_000
+  output_capture: task_output_all
+  on_request_error: continue
+realtime:
+  cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47]
+  wait_policy: spin
+  precondition_requests: 0

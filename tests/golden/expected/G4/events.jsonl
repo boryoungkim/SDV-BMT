@@ -1,0 +1,18 @@
+{"edge":"begin","kind":"phase","phase":"input.open","run_clock_domain":"virtual","schema_version":1,"seq":1,"t_run_ns":0}
+{"edge":"end","kind":"phase","outcome":"ok","phase":"input.open","run_clock_domain":"virtual","schema_version":1,"seq":2,"t_run_ns":0}
+{"edge":"begin","kind":"phase","phase":"dut.prepare","run_clock_domain":"virtual","schema_version":1,"seq":3,"t_run_ns":0}
+{"edge":"end","kind":"phase","outcome":"ok","phase":"dut.prepare","run_clock_domain":"virtual","schema_version":1,"seq":4,"t_run_ns":0}
+{"edge":"begin","kind":"phase","phase":"prepare_inputs","run_clock_domain":"virtual","schema_version":1,"seq":5,"t_run_ns":0}
+{"details":{"failed_items":[],"prepared":8},"edge":"end","kind":"phase","outcome":"ok","phase":"prepare_inputs","run_clock_domain":"virtual","schema_version":1,"seq":6,"t_run_ns":0}
+{"edge":"begin","kind":"phase","phase":"stress.prepare","run_clock_domain":"virtual","schema_version":1,"seq":7,"t_run_ns":0}
+{"edge":"end","kind":"phase","outcome":"ok","phase":"stress.prepare","run_clock_domain":"virtual","schema_version":1,"seq":9,"t_run_ns":0}
+{"edge":"begin","kind":"phase","phase":"stress.activate","run_clock_domain":"virtual","schema_version":1,"seq":10,"t_run_ns":0}
+{"edge":"end","kind":"phase","outcome":"ok","phase":"stress.activate","run_clock_domain":"virtual","schema_version":1,"seq":12,"t_run_ns":0}
+{"edge":"begin","kind":"phase","phase":"stress.verify","run_clock_domain":"virtual","schema_version":1,"seq":13,"t_run_ns":0}
+{"edge":"end","error":{"code":"fake_injected_failure","message":"injected verify failure"},"kind":"phase","outcome":"failed","phase":"stress.verify","run_clock_domain":"virtual","schema_version":1,"seq":15,"t_run_ns":0}
+{"kind":"cleanup","outcome":"ok","run_clock_domain":"virtual","schema_version":1,"seq":17,"step":"stress.deactivate","t_run_ns":0}
+{"kind":"cleanup","outcome":"ok","run_clock_domain":"virtual","schema_version":1,"seq":19,"step":"stress.restore","t_run_ns":0}
+{"details":{"discarded":8},"kind":"cleanup","outcome":"ok","run_clock_domain":"virtual","schema_version":1,"seq":20,"step":"prepared_store.discard","t_run_ns":0}
+{"kind":"cleanup","outcome":"ok","run_clock_domain":"virtual","schema_version":1,"seq":21,"step":"dut.cleanup","t_run_ns":0}
+{"kind":"cleanup","outcome":"ok","run_clock_domain":"virtual","schema_version":1,"seq":22,"step":"input.release","t_run_ns":0}
+{"execution_reason":"stress_verify_failed","execution_status":"failed","kind":"run_finished","measurement_reason":"not_measured","measurement_status":"invalid","request_counts":null,"run_clock_domain":"virtual","schema_version":1,"seq":23,"stress_status":{"coverage":"none","deactivate_t_run_ns":0,"nominal_check":"not_performed","restore":"ok","verification":"failed","verify_end_t_run_ns":null},"t_run_ns":0}

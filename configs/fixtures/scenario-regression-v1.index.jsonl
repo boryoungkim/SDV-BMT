@@ -1,0 +1,4 @@
+{"episode_id":"ep-r","frame_id":"000000","payload_text":"scenario fixture ep-r cam_front frame 000","sensor_id":"cam0","source_item_id":"ep-r/cam_front/000000","stream_id":"cam_front","t_capture_us":1727002000000000}
+{"episode_id":"ep-r","frame_id":"000001","payload_text":"scenario fixture ep-r cam_front frame 001","sensor_id":"cam0","source_item_id":"ep-r/cam_front/000001","stream_id":"cam_front","t_capture_us":1727002000033000}
+{"episode_id":"ep-r","frame_id":"000002","payload_text":"scenario fixture ep-r cam_front frame 002","sensor_id":"cam0","source_item_id":"ep-r/cam_front/000002","stream_id":"cam_front","t_capture_us":1727002000030000}
+{"episode_id":"ep-r","frame_id":"000003","payload_text":"scenario fixture ep-r cam_front frame 003","sensor_id":"cam0","source_item_id":"ep-r/cam_front/000003","stream_id":"cam_front","t_capture_us":1727002000099000}

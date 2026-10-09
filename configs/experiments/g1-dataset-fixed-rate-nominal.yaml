@@ -1,0 +1,25 @@
+# G-1 (MOCK): Dataset fixed-rate nominal. 8 items at 20 Hz (50 ms period), FakeDUT 25 ms.
+schema_version: 1
+experiment_id: g1-dataset-fixed-rate-nominal
+execution_kind: mock
+seed: 0
+repetitions: 1
+input: ../inputs/dataset-fixture-8.yaml
+workload: ../workloads/fake-identity.yaml
+dut: ../duts/fake-blocking-25ms.yaml
+stress: {spec: ../stress/fake-virtual-axis.yaml, level: none}
+replay: {mode: fixed_rate, rate_hz: 20}
+run:
+  max_inflight: 1
+  queue_capacity: 0
+  on_full: drop_new
+  request_timeout_ns: 1_000_000_000
+  drain_ns: 1_000_000_000
+  output_capture: task_output_all
+  on_request_error: continue
+evaluation:
+  deadline: {policy: frame_period, period_ns: 50_000_000}
+  output_reference:
+    kind: external_golden
+    path: ../references/g1-dataset-fixture-8.fake-identity.golden.jsonl
+    sha256: 4d35e1077d94276e1209b351e16850adce37c45a07c3040bed854ede937dafcf

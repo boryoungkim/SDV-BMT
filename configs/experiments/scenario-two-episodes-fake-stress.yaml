@@ -1,0 +1,19 @@
+# Sample (MOCK): two recorded episodes with jitter and a 100 ms episode gap, FakeStress level L1.
+schema_version: 1
+experiment_id: scenario-two-episodes-fake-stress
+execution_kind: mock
+input: ../inputs/scenario-ep-a-ep-b.yaml
+workload: ../workloads/fake-identity.yaml
+dut: ../duts/fake-blocking-25ms.yaml
+stress: {spec: ../stress/fake-virtual-axis.yaml, level: L1}
+replay: {mode: recorded, speed: 1.0, episode_gap_ns: 100_000_000}
+run:
+  max_inflight: 1
+  queue_capacity: 0
+  on_full: drop_new
+  request_timeout_ns: 1_000_000_000
+  drain_ns: 1_000_000_000
+  output_capture: task_output_all
+  on_request_error: continue
+evaluation:
+  deadline: {policy: frame_period, period_ns: 33_333_333}

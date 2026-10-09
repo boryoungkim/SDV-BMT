@@ -1,0 +1,31 @@
+# Python environments, caches, packaging output
+.venv/
+.venv-tools/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+
+# native build outputs (make -C native)
+native/build/
+tools/stage2b_g_real/build/
+
+# evidence bundles, generated datasets and downloaded / derived model files
+# (recreate them with the tools; see README "Reproducing the GPU reference result")
+runs/
+datasets/
+models/
+
+# profiler artifacts
+*.nsys-rep
+*.qdrep
+*.sqlite
+
+# internal stage-gate records (host-local details; summarized in docs/results/)
+# approved originals of the design basis, kept unmodified (public editions in docs/design/)
+/2026-10-06-stage-0-core-benchmark-redesign-v03.md
+/2026-10-06-stage-1a-implementation-authorization.md
+docs/reviews/
+docs/handoff/

@@ -1,0 +1,16 @@
+# MOCK virtual stress axis (Stage 1A). No real resource is loaded; level 'none' = nominal on this axis.
+schema_version: 1
+stress_id: fake-virtual-axis
+kind: fake_virtual
+target_resource: virtual-none
+placement: virtual
+control: {variable: virtual_intensity, unit: ratio}
+background_workload: null
+levels: {L1: 0.25, L2: 0.5, L3: 1.0}
+verification:
+  window_ns: 0
+  achieved_min_fraction: 0.9
+  independent: null
+schedule: whole_measurement
+on_apply_failure: abort
+provider_options: {}

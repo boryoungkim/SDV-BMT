@@ -1,0 +1,30 @@
+# MOCK blocking FakeDUT (Stage 1A, virtual clock). Table-driven service time for G-5.
+# Default 30 ms. Items 3, 11, ..., 107 take 90 ms (no timeout; the next 50 ms arrival is dropped).
+# Items 115 and 122 take 120 ms (beyond a 100 ms request timeout; the slot stays held until the
+# late completion, so the next two arrivals are dropped).
+schema_version: 1
+dut_config_id: fake-table-g5
+adapter: fake_blocking
+device: virtual-0
+max_inflight: 1
+runtime_options:
+  service_model:
+    kind: table
+    default_service_ns: 30_000_000
+    entries:
+      - {item_index: 3, service_ns: 90_000_000}
+      - {item_index: 11, service_ns: 90_000_000}
+      - {item_index: 19, service_ns: 90_000_000}
+      - {item_index: 27, service_ns: 90_000_000}
+      - {item_index: 35, service_ns: 90_000_000}
+      - {item_index: 43, service_ns: 90_000_000}
+      - {item_index: 51, service_ns: 90_000_000}
+      - {item_index: 59, service_ns: 90_000_000}
+      - {item_index: 67, service_ns: 90_000_000}
+      - {item_index: 75, service_ns: 90_000_000}
+      - {item_index: 83, service_ns: 90_000_000}
+      - {item_index: 91, service_ns: 90_000_000}
+      - {item_index: 99, service_ns: 90_000_000}
+      - {item_index: 107, service_ns: 90_000_000}
+      - {item_index: 115, service_ns: 120_000_000}
+      - {item_index: 122, service_ns: 120_000_000}

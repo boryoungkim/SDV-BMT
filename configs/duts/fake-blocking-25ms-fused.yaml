@@ -1,0 +1,13 @@
+# MOCK blocking FakeDUT (Stage 1A, virtual clock). Fixed service time 25 ms.
+# Offers the minimal fused input override (fake-fused-prefix-preprocess); it is used only when a
+# plan explicitly selects input_pipeline.mode=adapter_override.
+schema_version: 1
+dut_config_id: fake-blocking-25ms-fused
+adapter: fake_blocking
+device: virtual-0
+max_inflight: 1
+runtime_options:
+  service_model:
+    kind: fixed
+    service_ns: 25_000_000
+  input_override: {}

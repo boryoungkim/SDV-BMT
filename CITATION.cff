@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "If you use SDV-BMT in your research, please cite it as below."
+type: software
+title: "SDV-BMT: Model-level Accelerator Benchmark Core"
+version: "0.1.0"
+date-released: "2026-10-09"
+license: Apache-2.0
+# repository-code: to be added once the public repository URL is known.
+abstract: >-
+  SDV-BMT is a research benchmark framework for Model-level accelerator measurements. A C++ native
+  measurement plane records per-request execution facts into append-only evidence bundles; a Python plane
+  evaluates them into the Model-level Metric Set v1 and checks contrast validity with Design, Realization
+  and Measurement Guards. Version 0.1.0 includes an NVIDIA GPU reference backend and a YOLOX-S / COCO
+  reference workload. Its measurements do not establish WCET, FTTI, functional-safety compliance or
+  vehicle-level safety.
+authors:
+  - family-names: Kim
+    given-names: Boryoung
+keywords:
+  - benchmark
+  - accelerator
+  - automotive
+  - software-defined vehicle
+  - latency
+  - evidence

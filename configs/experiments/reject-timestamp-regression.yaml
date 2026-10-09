@@ -1,0 +1,17 @@
+# Rejection fixture (MOCK): source timestamp regression must fail PREFLIGHT (never re-sorted).
+schema_version: 1
+experiment_id: reject-timestamp-regression
+execution_kind: mock
+input: ../inputs/scenario-regression.yaml
+workload: ../workloads/fake-identity.yaml
+dut: ../duts/fake-blocking-25ms.yaml
+stress: {spec: ../stress/fake-virtual-axis.yaml, level: none}
+replay: {mode: recorded}
+run:
+  max_inflight: 1
+  queue_capacity: 0
+  on_full: drop_new
+  request_timeout_ns: 1_000_000_000
+  drain_ns: 1_000_000_000
+  output_capture: task_output_all
+  on_request_error: continue
