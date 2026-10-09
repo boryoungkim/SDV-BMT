@@ -1,13 +1,5 @@
 # SDV-BMT — Model-level Accelerator Benchmark Core
 
-**v0.1.0** (2026-10-09) · research benchmark framework · [Apache-2.0](LICENSE) · [changelog](CHANGELOG.md) ·
-[third-party notices](THIRD_PARTY_NOTICES.md)
-
-> **Disclaimer.** SDV-BMT v0.1 is a research benchmark framework. Its Model-level measurements do not
-> establish WCET, FTTI, ISO/PAS 8800 compliance, ISO 26262 compliance, SOTIF compliance, or vehicle-level
-> safety. Percentile latency is distribution characterization, not a worst-case timing guarantee.
-> `max_observed` is not WCET.
-
 ## What SDV-BMT is
 
 SDV-BMT runs one model workload on an accelerator (the device under test, DUT) under a planned request
@@ -195,11 +187,3 @@ Driving Scenario stage, hardware stress, and the Scenario × Stress matrix.
 Not in v0.1.0: NPU integration, driving scenarios, stress sweeps, system-level (Autoware) evaluation, WCET or
 FTTI claims, functional-safety compliance claims, calibration, energy per inference, DRAM bandwidth, AI error
 rates per hour or km, TTC / PET / DST, SPFM / LFM / PMHF / FIT.
-
-## Citing and license
-
-If you use SDV-BMT in your research, please cite it with the metadata in [`CITATION.cff`](CITATION.cff):
-Boryoung Kim, *SDV-BMT: Model-level Accelerator Benchmark Core*, version 0.1.0, 2026-10-09.
-
-Copyright 2026 Boryoung Kim. Licensed under the Apache License, Version 2.0 ([`LICENSE`](LICENSE)). Third-party
-components, models and data keep their own terms: [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

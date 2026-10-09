@@ -48,8 +48,8 @@ compliance, or vehicle-level safety. Licensed under the Apache License, Version 
   never changes recorded states or metric values; not part of `metrics_content_sha256`).
 - `make -C native portable` (fake runner + C++ unit tests, no CUDA) and `SDV_BMT_MAKE_TARGETS` for the test
   fixture; GitHub Actions CPU / portable workflow.
-- `LICENSE` (Apache-2.0), `README.md`, `THIRD_PARTY_NOTICES.md`, `CITATION.cff` (author, release date,
-  license), release notes, public result summary in `docs/results/`.
+- `LICENSE` (Apache-2.0), `README.md`, `THIRD_PARTY_NOTICES.md`, release notes, public result summary in
+  `docs/results/`.
 
 ### Changed
 
