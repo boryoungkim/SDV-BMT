@@ -187,3 +187,7 @@ Driving Scenario stage, hardware stress, and the Scenario × Stress matrix.
 Not in v0.1.0: NPU integration, driving scenarios, stress sweeps, system-level (Autoware) evaluation, WCET or
 FTTI claims, functional-safety compliance claims, calibration, energy per inference, DRAM bandwidth, AI error
 rates per hour or km, TTC / PET / DST, SPFM / LFM / PMHF / FIT.
+
+![SDV-BMT development roadmap: Stage 0 to Stage 6 and Phase 2](docs/Dev_roadmap.png)
+
+*Stages 0 and 1A are complete; 2a, 1R and 2b were carried out on the NVIDIA GPU reference track in v0.1.0; the NPU track (2a-N, 1R-N, 2b-N) is next.*
