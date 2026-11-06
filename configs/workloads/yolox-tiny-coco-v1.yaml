@@ -1,0 +1,35 @@
+# v0.1.2 YOLOX family (ACTUAL GPU reference accelerator; not an NPU result): YOLOX-Tiny, the official COCO-trained
+# model of the Megvii YOLOX release 0.1.1rc0 (Apache-2.0), downloaded 2026-10-23 with approval.
+# artifact_sha256 = SHA-256 of models/yolox-tiny/yolox_tiny.onnx (the model artifact). The cuDNN execution plan and
+# the float32 weight file are derived from it offline by tools/stage2b_g_real/build_yolox_plan.py (stdlib only)
+# and pinned below; the native NVIDIA backend executes them with cuDNN. Same preprocess, postprocess and codec as
+# YOLOX-S; Tiny's input is a 416x416 letterbox (3549 anchors). Declares the canonical task-quality evaluator
+# coco-detection-bbox/1 (as yolox-s-coco-v1-quality.yaml), so COCO quality is evaluated from the bundle alone.
+schema_version: 1
+workload_id: yolox-tiny-coco-v1
+implementation: yolox_coco
+task: coco-2017-object-detection
+artifact_sha256: 427cc366d34e27ff7a03e2899b5e3671425c262ea2291f88bb942bc1cc70b0f7
+precision: fp32
+batch: 1
+preprocess: {id: yolox-letterbox-bilinear-bgr, version: "1"}
+postprocess: {id: yolox-decode-nms-coco, version: "1"}
+codec: {id: canonical-json-utf8, version: "1"}
+output_ready: canonical task output (COCO detections of the image after decode, class-aware NMS and top-100) encoded and appended to outputs.bin
+quality_evaluator: coco-detection-bbox/1
+options:
+  # model input size S (a multiple of 32) and anchors = (S/8)^2 + (S/16)^2 + (S/32)^2
+  input_size: 416
+  num_anchors: 3549
+  device_program:
+    language: cudnn_plan
+    plan: models/yolox-tiny/yolox_tiny.plan.json
+    plan_sha256: 4ad0d0a396b396cf778d71519678d319bc08f9f6bfec046f1ad3ba866b6c1427
+    weights: models/yolox-tiny/yolox_tiny.weights.f32
+    weights_sha256: 0ff12e7ea087ae6619d9f4462f98d7f5255fbe38f9b46ada9fb2766e684091a7
+    input_bytes: 2076672
+    # the 4 u64 timing words of the frequency probe need an 8-byte aligned offset: first multiple of 8 after the
+    # 1206660-byte task output (YOLOX-S/M/L/X: 2856000 is already aligned)
+    output_bytes: 1206696
+    task_output_bytes: 1206660
+    timing_offset: 1206664

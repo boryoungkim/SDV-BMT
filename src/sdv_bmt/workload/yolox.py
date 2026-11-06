@@ -1,19 +1,23 @@
 """YOLOX COCO 2D object detection workload (``implementation: yolox_coco``), Stage 2b-G real-model baseline.
 
-A real task workload: the official COCO-trained YOLOX-S model (ONNX artifact, SHA-256 pinned by
-``artifact_sha256``) on COCO val2017 images.  The Workload owns the canonical input semantics, the
+A real task workload: an official COCO-trained YOLOX model (Tiny, S, M, L or X; ONNX artifact, SHA-256 pinned
+by ``artifact_sha256``) on COCO val2017 images.  The Workload owns the canonical input semantics, the
 postprocess and the codec; the DUT adapter executes the model (NVIDIA: cuDNN plan converted offline from the
 ONNX file).  Task quality (COCO bbox AP) is computed offline from the recorded task outputs and the dataset
 annotations; it is not part of this class.
 
+The model's input size S and anchor count are declared in the workload spec (``options.input_size``,
+``options.num_anchors``): S is a multiple of the largest stride 32 (640 for S/M/L/X, 416 for Tiny) and the
+anchor count is one per grid cell at strides 8, 16 and 32 (8400 for 640, 3549 for 416).
+
 * Payload: binary PPM (``P6``, maxval 255) holding the RGB pixels of the decoded JPEG (decoded once, offline).
 * Canonical preprocessing (``yolox-letterbox-bilinear-bgr/1``), following YOLOX ``ValTransform(legacy=False)``:
-  ``r = min(640/h, 640/w)``; the image is resized to ``int(w*r) x int(h*r)`` (unchanged when that is its own
-  size), placed at the top-left of a 640x640 canvas filled with 114, channels in BGR order, CHW float32 with
-  the raw pixel value (no normalization) -> 4,915,200 bytes.  Resize: bilinear with half-pixel centres and
+  ``r = min(S/h, S/w)``; the image is resized to ``int(w*r) x int(h*r)`` (unchanged when that is its own
+  size), placed at the top-left of an SxS canvas filled with 114, channels in BGR order, CHW float32 with
+  the raw pixel value (no normalization) -> 12*S*S bytes.  Resize: bilinear with half-pixel centres and
   edge clamping, float64 weights, horizontal then vertical pass, ``int(v + 0.5)`` per channel value.  This is
   OpenCV ``INTER_LINEAR``'s geometry but not its 11-bit fixed-point arithmetic (values may differ by one level).
-* Raw output: 8400 x 85 float32 (the ONNX ``output`` tensor, undecoded).
+* Raw output: anchors x 85 float32 (the ONNX ``output`` tensor, undecoded).
 * Postprocess ``yolox-decode-nms-coco/1`` and codec ``canonical-json-utf8/1``: see ``postprocess``.  The native
   twin is ``native/src/common/yolox_output.hpp``; both use IEEE double arithmetic in the same order.
 """
@@ -31,23 +35,25 @@ from ..contracts.protocols import WorkloadError
 from ..contracts.records import InputItem, WorkloadInputContract
 from ..contracts.specs import ComponentIdentity, WorkloadSpec
 
-INPUT_SIZE = 640
 PAD_VALUE = 114
-NUM_ANCHORS = 8400
 NUM_CHANNELS = 85
 NUM_CLASSES = 80
 STRIDES = (8, 16, 32)
+MAX_INPUT_SIZE = 4096  # same bound as the native twin
 CONF_THRESHOLD = 0.01  # YOLOX COCO evaluation default (exp.test_conf)
 NMS_THRESHOLD = 0.65  # YOLOX COCO evaluation default (exp.nmsthre)
 MAX_DETECTIONS = 100  # COCO maxDets
-INPUT_BYTES = 3 * INPUT_SIZE * INPUT_SIZE * 4
-RAW_BYTES = NUM_ANCHORS * NUM_CHANNELS * 4
 OUTPUT_SCHEMA = "sdv-yolox-coco-detections/1"
 # COCO category id of each contiguous class index (category ids sorted ascending, as YOLOX's COCO dataset)
 COCO_CATEGORY_IDS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 27, 28,
                      31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55,
                      56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 67, 70, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 84,
                      85, 86, 87, 88, 89, 90)
+
+
+def anchor_count(input_size: int) -> int:
+    """Anchors of the YOLOX head on an input_size x input_size image: one per grid cell at each stride."""
+    return sum((input_size // s) ** 2 for s in STRIDES)
 
 
 def parse_ppm(payload: bytes) -> tuple[int, int, bytes]:
@@ -143,17 +149,30 @@ class YoloxCocoWorkload:
             raise ValueError("yolox_coco needs options.device_program and the model artifact_sha256")
         if sys.byteorder != "little":
             raise ValueError("yolox_coco produces little-endian float32 input")
+        size, anchors = spec.options.get("input_size"), spec.options.get("num_anchors")
+        if type(size) is not int or not 0 < size <= MAX_INPUT_SIZE or size % STRIDES[-1]:
+            raise ValueError(f"yolox_coco needs options.input_size, a multiple of {STRIDES[-1]} up to {MAX_INPUT_SIZE}")
+        if type(anchors) is not int or anchors != anchor_count(size):
+            raise ValueError(f"options.num_anchors must be {anchor_count(size)} for input_size {size} "
+                             f"(one anchor per grid cell at strides {STRIDES})")
+        self._size, self._anchors = size, anchors
+        self._input_bytes, self._raw_bytes = 3 * size * size * 4, anchors * NUM_CHANNELS * 4
+        program = spec.options["device_program"]
+        if not isinstance(program, dict) or (program.get("input_bytes"), program.get("task_output_bytes")) != (
+                self._input_bytes, self._raw_bytes):
+            raise ValueError(f"options.device_program must declare input_bytes {self._input_bytes} and "
+                             f"task_output_bytes {self._raw_bytes} for input_size {size}")
         self._task = spec.task
         self._contract = WorkloadInputContract(
             schema_version=1,
-            contract_id="yolox-letterbox-bgr-chw640-f32",
+            contract_id=f"yolox-letterbox-bgr-chw{size}-f32",
             contract_version="1",
             task=spec.task,
             preprocess_semantics_id=f"{self.PREPROCESS.id}/{self.PREPROCESS.version}",
             payload_format="ppm-p6 rgb8 (decoded image)",
-            logical_input=(("dtype", "float32"), ("layout", "chw"), ("shape", "3x640x640"),
+            logical_input=(("dtype", "float32"), ("layout", "chw"), ("shape", f"3x{size}x{size}"),
                            ("channel_order", "bgr"), ("value", "pixel value 0..255, not normalized"),
-                           ("letterbox", "r=min(640/h,640/w); int(w*r) x int(h*r) at top-left; pad 114"),
+                           ("letterbox", f"r=min({size}/h,{size}/w); int(w*r) x int(h*r) at top-left; pad 114"),
                            ("resize", "bilinear, half-pixel centres, edge clamp, float64 weights, int(v+0.5)"),
                            ("byte_order", "little")),
         )
@@ -186,33 +205,34 @@ class YoloxCocoWorkload:
         if (w, h) != (meta["width"], meta["height"]):
             raise WorkloadError(f"item {item.item_index}: payload is {w}x{h}, index metadata says "
                                 f"{meta['width']}x{meta['height']}")
-        r = min(INPUT_SIZE / h, INPUT_SIZE / w)
+        side = self._size
+        r = min(side / h, side / w)
         nw, nh = int(w * r), int(h * r)
-        if not (0 < nw <= INPUT_SIZE and 0 < nh <= INPUT_SIZE):
+        if not (0 < nw <= side and 0 < nh <= side):
             raise WorkloadError(f"item {item.item_index}: letterbox size {nw}x{nh} out of range")
         pixels = rgb if (nw, nh) == (w, h) else resize_bilinear(rgb, w, h, nw, nh)
         out = array.array("f")
-        side = INPUT_SIZE
         for src_channel in (2, 1, 0):  # B, G, R
             plane = bytearray(bytes([PAD_VALUE]) * (side * side))
             for y in range(nh):
                 plane[y * side:y * side + nw] = pixels[y * nw * 3 + src_channel:(y + 1) * nw * 3:3]
             out.extend(memoryview(plane).tolist())
         data = out.tobytes()
-        if len(data) != INPUT_BYTES:  # pragma: no cover - defensive
+        if len(data) != self._input_bytes:  # pragma: no cover - defensive
             raise WorkloadError("preprocessed input has the wrong size")
         return data
 
     def postprocess(self, raw_output: object, item: InputItem) -> dict[str, Any]:
-        if not isinstance(raw_output, (bytes, bytearray)) or len(raw_output) != RAW_BYTES:
-            raise WorkloadError(f"raw output must be {RAW_BYTES} bytes (8400x85 float32)")
+        if not isinstance(raw_output, (bytes, bytearray)) or len(raw_output) != self._raw_bytes:
+            raise WorkloadError(f"raw output must be {self._raw_bytes} bytes ({self._anchors}x{NUM_CHANNELS} float32)")
         meta = self._image_meta(item)
-        v = struct.unpack(f"<{NUM_ANCHORS * NUM_CHANNELS}f", bytes(raw_output))
-        r = min(INPUT_SIZE / meta["height"], INPUT_SIZE / meta["width"])
+        v = struct.unpack(f"<{self._anchors * NUM_CHANNELS}f", bytes(raw_output))
+        side = self._size
+        r = min(side / meta["height"], side / meta["width"])
         cand: list[tuple[float, float, float, float, float, int]] = []
         a = 0
         for stride in STRIDES:
-            g = INPUT_SIZE // stride
+            g = side // stride
             s = float(stride)
             for p in range(g * g):
                 row = a * NUM_CHANNELS
@@ -266,13 +286,14 @@ class YoloxCocoWorkload:
         """The native measurement plane's twin of postprocess + encode (``native/src/common/yolox_output.hpp``).
 
         The parameters are repeated here so the native runner can refuse a pipeline whose constants differ
-        from its own (a configured and a realized pipeline are not assumed to be identical)."""
+        from its own (a configured and a realized pipeline are not assumed to be identical).  ``input_size`` is
+        the declared model input size; the native twin derives the anchor count from it as ``anchor_count``."""
         return {"kind": "yolox_coco_v1", "task": self._task,
                 "postprocess": f"{self.POSTPROCESS.id}/{self.POSTPROCESS.version}",
                 "codec": f"{self.CODEC.id}/{self.CODEC.version}",
                 "implementation": "native:native/src/common/yolox_output.hpp",
                 "conf_threshold_ppm": 10000, "nms_iou_threshold_ppm": 650000, "max_detections": MAX_DETECTIONS,
-                "input_size": INPUT_SIZE, "num_classes": NUM_CLASSES}
+                "input_size": self._size, "num_classes": NUM_CLASSES}
 
     def encode(self, task_output: object) -> bytes:
         if not isinstance(task_output, dict) or task_output.get("schema") != OUTPUT_SCHEMA:

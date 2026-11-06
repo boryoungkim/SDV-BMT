@@ -1,0 +1,156 @@
+# v0.1.2 YOLOX family (ACTUAL): GPU 0 executing the YOLOX-L cuDNN plan with a pinned algorithm table
+# (cuDNN 9.1.0, approved 2026-10-08). The runner fails DUT.prepare if cuDNN rejects a pinned entry, and
+# records the heuristic's own choice next to it. Prepared inputs in pinned host memory (per-request H2D
+# inside DUT-service), CUDA-event segment timing, frequency probe (20000 SM cycles) first in each request.
+# Same runtime options as nvidia-rtx-pro-6000-gpu0-cudnn-yolox-s.yaml; only the algorithm table differs.
+schema_version: 1
+dut_config_id: nvidia-rtx-pro-6000-gpu0-cudnn-yolox-l
+adapter: nvidia_cuda
+device: GPU-f3e03bfa-61ab-acdf-0834-450de8becefc
+max_inflight: 1
+runtime_options:
+  residency: host_pinned
+  instrumentation: cuda_events
+  context_sched: blocking_sync
+  cudnn:
+    math_type: default
+    algo_policy: pinned
+    workspace_limit_bytes: 268435456
+    # (algorithm, math type) per convolution in plan order, cuDNN 9.1.0 enum values:
+    # 1 = IMPLICIT_PRECOMP_GEMM, 7 = WINOGRAD_NONFUSED; math type 0 = CUDNN_DEFAULT_MATH.
+    # Obtained from the heuristic policy (cudnnGetConvolutionForwardAlgorithm_v7, first supported deterministic
+    # result within the workspace limit) on this device and library by the yolox-l-algo-probe run
+    # run-20261023T020923Z-4d9ea9198e3e; table SHA-256 52981297cd246ee067795d7e0202cd0dda1ec45c0f15acf2addfb26e260a3999.
+    algorithms:
+      - [1, 0]   # conv 0
+      - [1, 0]   # conv 1
+      - [1, 0]   # conv 2
+      - [1, 0]   # conv 3
+      - [1, 0]   # conv 4
+      - [1, 0]   # conv 5
+      - [1, 0]   # conv 6
+      - [1, 0]   # conv 7
+      - [1, 0]   # conv 8
+      - [1, 0]   # conv 9
+      - [1, 0]   # conv 10
+      - [1, 0]   # conv 11
+      - [1, 0]   # conv 12
+      - [1, 0]   # conv 13
+      - [1, 0]   # conv 14
+      - [1, 0]   # conv 15
+      - [1, 0]   # conv 16
+      - [1, 0]   # conv 17
+      - [1, 0]   # conv 18
+      - [1, 0]   # conv 19
+      - [1, 0]   # conv 20
+      - [1, 0]   # conv 21
+      - [1, 0]   # conv 22
+      - [1, 0]   # conv 23
+      - [1, 0]   # conv 24
+      - [1, 0]   # conv 25
+      - [1, 0]   # conv 26
+      - [1, 0]   # conv 27
+      - [1, 0]   # conv 28
+      - [1, 0]   # conv 29
+      - [1, 0]   # conv 30
+      - [1, 0]   # conv 31
+      - [1, 0]   # conv 32
+      - [1, 0]   # conv 33
+      - [1, 0]   # conv 34
+      - [1, 0]   # conv 35
+      - [1, 0]   # conv 36
+      - [1, 0]   # conv 37
+      - [1, 0]   # conv 38
+      - [1, 0]   # conv 39
+      - [1, 0]   # conv 40
+      - [1, 0]   # conv 41
+      - [1, 0]   # conv 42
+      - [1, 0]   # conv 43
+      - [1, 0]   # conv 44
+      - [1, 0]   # conv 45
+      - [1, 0]   # conv 46
+      - [1, 0]   # conv 47
+      - [1, 0]   # conv 48
+      - [1, 0]   # conv 49
+      - [1, 0]   # conv 50
+      - [1, 0]   # conv 51
+      - [1, 0]   # conv 52
+      - [1, 0]   # conv 53
+      - [1, 0]   # conv 54
+      - [1, 0]   # conv 55
+      - [1, 0]   # conv 56
+      - [1, 0]   # conv 57
+      - [1, 0]   # conv 58
+      - [1, 0]   # conv 59
+      - [1, 0]   # conv 60
+      - [1, 0]   # conv 61
+      - [1, 0]   # conv 62
+      - [1, 0]   # conv 63
+      - [1, 0]   # conv 64
+      - [1, 0]   # conv 65
+      - [1, 0]   # conv 66
+      - [1, 0]   # conv 67
+      - [1, 0]   # conv 68
+      - [1, 0]   # conv 69
+      - [1, 0]   # conv 70
+      - [1, 0]   # conv 71
+      - [1, 0]   # conv 72
+      - [1, 0]   # conv 73
+      - [1, 0]   # conv 74
+      - [1, 0]   # conv 75
+      - [1, 0]   # conv 76
+      - [1, 0]   # conv 77
+      - [1, 0]   # conv 78
+      - [1, 0]   # conv 79
+      - [1, 0]   # conv 80
+      - [1, 0]   # conv 81
+      - [1, 0]   # conv 82
+      - [1, 0]   # conv 83
+      - [1, 0]   # conv 84
+      - [1, 0]   # conv 85
+      - [1, 0]   # conv 86
+      - [1, 0]   # conv 87
+      - [1, 0]   # conv 88
+      - [1, 0]   # conv 89
+      - [1, 0]   # conv 90
+      - [1, 0]   # conv 91
+      - [1, 0]   # conv 92
+      - [1, 0]   # conv 93
+      - [1, 0]   # conv 94
+      - [1, 0]   # conv 95
+      - [1, 0]   # conv 96
+      - [1, 0]   # conv 97
+      - [1, 0]   # conv 98
+      - [1, 0]   # conv 99
+      - [1, 0]   # conv 100
+      - [1, 0]   # conv 101
+      - [1, 0]   # conv 102
+      - [1, 0]   # conv 103
+      - [1, 0]   # conv 104
+      - [1, 0]   # conv 105
+      - [1, 0]   # conv 106
+      - [1, 0]   # conv 107
+      - [1, 0]   # conv 108
+      - [1, 0]   # conv 109
+      - [1, 0]   # conv 110
+      - [1, 0]   # conv 111
+      - [1, 0]   # conv 112
+      - [1, 0]   # conv 113
+      - [1, 0]   # conv 114
+      - [1, 0]   # conv 115
+      - [1, 0]   # conv 116
+      - [1, 0]   # conv 117
+      - [1, 0]   # conv 118
+      - [1, 0]   # conv 119
+      - [1, 0]   # conv 120
+      - [1, 0]   # conv 121
+      - [1, 0]   # conv 122
+      - [1, 0]   # conv 123
+      - [7, 0]   # conv 124
+      - [7, 0]   # conv 125
+      - [1, 0]   # conv 126
+      - [7, 0]   # conv 127
+      - [7, 0]   # conv 128
+      - [1, 0]   # conv 129
+      - [1, 0]   # conv 130
+  frequency_probe_cycles: 20000

@@ -60,12 +60,14 @@ def test_algorithm_table_digest_is_the_compact_json_sha256():
 
 
 def test_declared_dut_configs_parse_and_declare_the_probe():
-    for name in ("nvidia-rtx-pro-6000-gpu0-cudnn-yolox-s", "nvidia-rtx-pro-6000-gpu0-cudnn-yolox-s-nsys",
-                 "nvidia-rtx-pro-6000-gpu0-cudnn-heuristic"):
-        cfg = parse_strict(DUTConfig, load_yaml_strict(CONFIGS / "duts" / f"{name}.yaml"))
-        dut = NvidiaCudaDUT(cfg)
+    # pinned configurations: one (algorithm, math type) entry per convolution of the model's plan
+    for name, convolutions in (("yolox-s", 83), ("yolox-s-nsys", 83), ("heuristic", None), ("yolox-tiny", 83),
+                               ("yolox-m", 107), ("yolox-l", 131), ("yolox-x", 155)):
+        path = CONFIGS / "duts" / f"nvidia-rtx-pro-6000-gpu0-cudnn-{name}.yaml"
+        dut = NvidiaCudaDUT(parse_strict(DUTConfig, load_yaml_strict(path)))
         decl = dut.measurement_declaration()
         assert decl["instrumentation"]["in_kernel_timing"].startswith("probe kernel: one thread, 20000 SM cycles")
         assert "cuDNN plan" in decl["device_timing"]["semantics"]
-        if dut._options.cudnn.algo_policy == "pinned":
-            assert len(dut._options.cudnn.algorithms) == 83
+        assert (dut._options.cudnn.algo_policy == "pinned") == (convolutions is not None)
+        if convolutions is not None:
+            assert len(dut._options.cudnn.algorithms) == convolutions

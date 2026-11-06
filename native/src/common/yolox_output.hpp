@@ -6,9 +6,11 @@
 // Byte equality with the Python implementation is checked by tests (synthetic raw outputs) and by the Stage
 // 2b-G analysis on real device outputs.
 //
-// raw output: 8400 anchors x 85 float32 (little-endian), anchor-major: [x, y, log w, log h, obj, 80 class
-//             scores] in grid units, anchors ordered stride 8 (80x80), 16 (40x40), 32 (20x20), row-major.
-// semantics:  scale r = min(640/height, 640/width) of the original image; an anchor is a candidate when
+// input size: S = the workload's declared input_size (a multiple of 32: 640 for YOLOX-S/M/L/X, 416 for Tiny);
+//             the anchor count is (S/8)^2 + (S/16)^2 + (S/32)^2 (8400 for 640, 3549 for 416).
+// raw output: anchors x 85 float32 (little-endian), anchor-major: [x, y, log w, log h, obj, 80 class
+//             scores] in grid units, anchors ordered stride 8, 16, 32 (grids S/8, S/16, S/32), row-major.
+// semantics:  scale r = min(S/height, S/width) of the original image; an anchor is a candidate when
 //             obj >= 0.01 and score = obj * max class score >= 0.01 (first index of the maximum); box center
 //             = (raw + grid) * stride, size = exp(raw) * stride, corners = center -/+ size/2; class-aware
 //             greedy NMS in descending score order (ties: lower anchor index first), suppressing IoU > 0.65
@@ -36,20 +38,32 @@ namespace sdv {
 class YoloxCocoOutput {
    public:
     static constexpr const char* kSchema = "sdv-yolox-coco-detections/1";
-    static constexpr int kAnchors = 8400, kChannels = 85, kClasses = 80, kInputSize = 640, kMaxDetections = 100;
+    static constexpr int kChannels = 85, kClasses = 80, kMaxDetections = 100, kMaxInputSize = 4096;
+    static constexpr int kStrides[3] = {8, 16, 32};
     static constexpr double kConfThreshold = 0.01, kNmsThreshold = 0.65;
     static constexpr int64_t kConfThresholdPpm = 10000, kNmsThresholdPpm = 650000;
     static constexpr size_t kMaxBlobBytes = 16384;
+
+    // Anchors of the YOLOX head on an input_size x input_size image: one per grid cell at each stride.
+    static int64_t anchor_count(int64_t input_size) {
+        int64_t n = 0;
+        for (int s : kStrides) n += (input_size / s) * (input_size / s);
+        return n;
+    }
 
     explicit YoloxCocoOutput(const Json& spec) {
         const uint16_t probe = 1;
         if (*reinterpret_cast<const unsigned char*>(&probe) != 1) throw JsonError("little-endian host required");
         if (spec.at("conf_threshold_ppm").as_int() != kConfThresholdPpm ||
             spec.at("nms_iou_threshold_ppm").as_int() != kNmsThresholdPpm ||
-            spec.at("max_detections").as_int() != kMaxDetections || spec.at("input_size").as_int() != kInputSize ||
-            spec.at("num_classes").as_int() != kClasses)
+            spec.at("max_detections").as_int() != kMaxDetections || spec.at("num_classes").as_int() != kClasses)
             throw JsonError("yolox output pipeline parameters differ from the native implementation");
-        cand_.reserve(kAnchors);
+        const int64_t size = spec.at("input_size").as_int();
+        if (size <= 0 || size > kMaxInputSize || size % kStrides[2] != 0)
+            throw JsonError("yolox output pipeline input_size must be a multiple of 32 up to 4096");
+        input_size_ = int(size);
+        anchors_ = size_t(anchor_count(size));
+        cand_.reserve(anchors_);
         kept_.reserve(kMaxDetections);
     }
 
@@ -65,8 +79,9 @@ class YoloxCocoOutput {
     bool encode(int64_t /*request_id*/, int64_t item_index, std::string_view raw, std::string& blob,
                 std::string& phase, ErrorInfo& err) const {
         phase = "postprocess";
-        if (raw.size() != size_t(kAnchors) * kChannels * 4) {
-            err = ErrorInfo{"WorkloadError", "raw output must be 8400x85 float32 (2856000 bytes)"};
+        if (raw.size() != anchors_ * kChannels * 4) {
+            err = ErrorInfo{"WorkloadError", "raw output must be " + std::to_string(anchors_) + "x85 float32 (" +
+                                                 std::to_string(anchors_ * kChannels * 4) + " bytes)"};
             return false;
         }
         auto it = ctx_.find(item_index);
@@ -81,12 +96,11 @@ class YoloxCocoOutput {
             std::memcpy(&v, base + 4 * i, 4);
             return double(v);
         };
-        const double r = std::min(double(kInputSize) / double(c.height), double(kInputSize) / double(c.width));
+        const double r = std::min(double(input_size_) / double(c.height), double(input_size_) / double(c.width));
         cand_.clear();
-        static const int strides[3] = {8, 16, 32};
         size_t a = 0;
-        for (int stride : strides) {
-            const int g = kInputSize / stride;
+        for (int stride : kStrides) {
+            const int g = input_size_ / stride;
             for (int p = 0; p < g * g; ++p, ++a) {
                 const size_t row = a * kChannels;
                 const double obj = at(row + 4);
@@ -175,6 +189,8 @@ class YoloxCocoOutput {
         double x1, y1, x2, y2, score;
         int cls;
     };
+    int input_size_ = 0;
+    size_t anchors_ = 0;
     std::map<int64_t, Ctx> ctx_;
     mutable std::vector<Cand> cand_;  // preallocated scratch (no allocation in the measured path)
     mutable std::vector<size_t> kept_;

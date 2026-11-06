@@ -16,10 +16,13 @@ codec: {id: canonical-json-utf8, version: "1"}
 output_ready: canonical task output (COCO detections of the image after decode, class-aware NMS and top-100) encoded and appended to outputs.bin
 quality_evaluator: coco-detection-bbox/1
 options:
+  # model input size S (a multiple of 32) and anchors = (S/8)^2 + (S/16)^2 + (S/32)^2 (v0.1.2: declared here)
+  input_size: 640
+  num_anchors: 8400
   device_program:
     language: cudnn_plan
     plan: models/yolox-s/yolox_s.plan.json
-    plan_sha256: d17fd39be7c260a4415fa6a13b9c14b985d5d329c72a0d9a04c91c872ed83ef5
+    plan_sha256: 1c226dbbf8d5f371a0eb002bc05c5b7620ff7fdc3ba562f74fbfb14584d2d544
     weights: models/yolox-s/yolox_s.weights.f32
     weights_sha256: 559b135c4efbf864a6edbb08fe963d57bd0772b212ab7aecafbdd0fd731e63e0
     input_bytes: 4915200

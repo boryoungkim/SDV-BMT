@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-"""Convert the YOLOX-S ONNX model into an SDV-BMT cuDNN execution plan + weight blob (offline, stdlib only).
+"""Convert an official YOLOX ONNX model into an SDV-BMT cuDNN execution plan + weight blob (offline, stdlib only).
 
-Stage 2b-G real-model baseline.  The ONNX file is the model artifact (identity = its SHA-256).  This tool
-derives, deterministically, what the native NVIDIA backend executes with cuDNN and its glue kernels:
+Stage 2b-G real-model baseline; v0.1.2 extends it from YOLOX-S to the YOLOX Tiny/S/M/L/X files of the same
+release (0.1.1rc0).  The ONNX file is the model artifact (identity = its SHA-256).  This tool derives,
+deterministically, what the native NVIDIA backend executes with cuDNN and its glue kernels:
 
   <out>.plan.json   integer-only canonical JSON: steps, tensor placement, convolution geometry
   <out>.weights.f32 convolution weights and biases, float32 little-endian, 256-byte aligned
+
+Input and output: the graph input must be 1x3xSxS float32 with S a multiple of the largest stride 32 (640 for
+YOLOX-S/M/L/X, 416 for Tiny); the output must be 1xAx85 with A = (S/8)^2 + (S/16)^2 + (S/32)^2, and the three
+head levels must be exactly the S/8, S/16 and S/32 grids, in that order.
 
 Graph patterns recognised (anything else is rejected, never approximated):
   * Focus stem: 8 Slice + Concat on the graph input -> step ``space_to_depth2`` (group order recorded)
@@ -17,6 +22,7 @@ Graph patterns recognised (anything else is rejected, never approximated):
   * Reshape [1,85,-1] x3 + Concat(axis 2) + Transpose [0,2,1] -> step ``head_transpose`` into the output
 
 Usage: python3 tools/stage2b_g_real/build_yolox_plan.py models/yolox-s/yolox_s.onnx models/yolox-s/yolox_s
+       (likewise models/yolox-<tiny|m|l|x>/yolox_<tiny|m|l|x>.onnx -> models/yolox-<v>/yolox_<v>)
 """
 
 from __future__ import annotations
@@ -33,6 +39,7 @@ import onnx_reader as R  # noqa: E402
 SCHEMA = "sdv-bmt-cudnn-plan/1"
 ALIGN = 256
 INT64_MAX = (1 << 63) - 1
+STRIDES = (8, 16, 32)
 
 
 def canonical(obj) -> str:
@@ -64,9 +71,14 @@ def main() -> int:
     if len(graph_inputs) != 1 or len(m.outputs) != 1:
         raise Fail("expected one graph input and one output")
     gin, gout = graph_inputs[0], m.outputs[0]
-    if tuple(gin.shape) != (1, 3, 640, 640) or gin.elem_type != R.FLOAT:
+    in_shape = tuple(gin.shape)
+    if (len(in_shape) != 4 or not all(isinstance(d, int) for d in in_shape) or in_shape[:2] != (1, 3)
+            or in_shape[2] != in_shape[3] or in_shape[2] <= 0 or in_shape[2] % STRIDES[-1] or gin.elem_type != R.FLOAT):
         raise Fail(f"unexpected input {gin}")
-    if tuple(gout.shape) != (1, 8400, 85) or gout.elem_type != R.FLOAT:
+    size = in_shape[2]
+    level_grids = [(size // s, size // s) for s in STRIDES]
+    num_anchors = sum(h * w for h, w in level_grids)
+    if tuple(gout.shape) != (1, num_anchors, 85) or gout.elem_type != R.FLOAT:
         raise Fail(f"unexpected output {gout}")
 
     producer: dict[str, int] = {}
@@ -134,7 +146,7 @@ def main() -> int:
         if sorted(map(tuple, order)) != [(0, 0), (0, 1), (1, 0), (1, 1)]:
             raise Fail(f"Focus: unexpected group order {order}")
         fused.add(k)
-        c, h, w = 3, 640, 640
+        c, h, w = 3, size, size
         shape[n.outputs[0]] = (1, 4 * c, h // 2, w // 2)
         steps.append({"op": "space_to_depth2", "x": gin.name, "y": n.outputs[0], "c": c, "h": h, "w": w,
                       "order": order})
@@ -328,8 +340,8 @@ def main() -> int:
             raise Fail("head: 85 channels expected")
         head["levels"].append({"x": ref(t), "h": H, "w": Wd, "anchor_offset": anchors})
         anchors += H * Wd
-    if anchors != 8400:
-        raise Fail(f"head: {anchors} anchors")
+    if [(s[2], s[3]) for s in level_shapes] != level_grids:
+        raise Fail(f"head: level grids {[s[2:] for s in level_shapes]} are not {level_grids} of a {size} input")
     plan_steps.append(head)
 
     used = {s["op"] for s in plan_steps}
@@ -344,9 +356,9 @@ def main() -> int:
                       "sha256": sha256(Path(__file__).read_bytes()),
                       "onnx_reader_sha256": sha256((Path(__file__).parent / "onnx_reader.py").read_bytes())},
         "input": {"name": gin.name, "shape": list(gin.shape), "dtype": "float32", "layout": "NCHW",
-                  "bytes": 4 * 3 * 640 * 640},
-        "output": {"name": gout.name, "shape": list(gout.shape), "dtype": "float32", "bytes": 4 * 8400 * 85,
-                   "anchor_strides": [8, 16, 32], "levels_hw": [[s[2], s[3]] for s in level_shapes]},
+                  "bytes": 4 * 3 * size * size},
+        "output": {"name": gout.name, "shape": list(gout.shape), "dtype": "float32", "bytes": 4 * num_anchors * 85,
+                   "anchor_strides": list(STRIDES), "levels_hw": [[s[2], s[3]] for s in level_shapes]},
         "weights": {"file": Path(out_prefix).name + ".weights.f32", "bytes": len(weights_bytes),
                     "sha256": sha256(weights_bytes), "dtype": "float32", "byte_order": "little"},
         "arena_bytes": cursor,

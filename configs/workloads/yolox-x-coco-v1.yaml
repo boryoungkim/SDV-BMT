@@ -1,0 +1,33 @@
+# v0.1.2 YOLOX family (ACTUAL GPU reference accelerator; not an NPU result): YOLOX-X, the official COCO-trained
+# model of the Megvii YOLOX release 0.1.1rc0 (Apache-2.0), downloaded 2026-10-23 with approval.
+# artifact_sha256 = SHA-256 of models/yolox-x/yolox_x.onnx (the model artifact). The cuDNN execution plan and
+# the float32 weight file are derived from it offline by tools/stage2b_g_real/build_yolox_plan.py (stdlib only)
+# and pinned below; the native NVIDIA backend executes them with cuDNN. Same preprocess, postprocess and codec as
+# YOLOX-S (640x640 letterbox, 8400 anchors). Declares the canonical task-quality evaluator coco-detection-bbox/1
+# (as yolox-s-coco-v1-quality.yaml), so COCO quality is evaluated from the bundle alone.
+schema_version: 1
+workload_id: yolox-x-coco-v1
+implementation: yolox_coco
+task: coco-2017-object-detection
+artifact_sha256: c892d7aaf1c4746d8a4d675bec669a4db4f434b4ee1efb654bc9b353379c7c55
+precision: fp32
+batch: 1
+preprocess: {id: yolox-letterbox-bilinear-bgr, version: "1"}
+postprocess: {id: yolox-decode-nms-coco, version: "1"}
+codec: {id: canonical-json-utf8, version: "1"}
+output_ready: canonical task output (COCO detections of the image after decode, class-aware NMS and top-100) encoded and appended to outputs.bin
+quality_evaluator: coco-detection-bbox/1
+options:
+  # model input size S (a multiple of 32) and anchors = (S/8)^2 + (S/16)^2 + (S/32)^2
+  input_size: 640
+  num_anchors: 8400
+  device_program:
+    language: cudnn_plan
+    plan: models/yolox-x/yolox_x.plan.json
+    plan_sha256: 9c65ab1e848f53a97465fb5dfcdb1d98e7e43ca8ccd4869877cd83e651a3caf8
+    weights: models/yolox-x/yolox_x.weights.f32
+    weights_sha256: 07aec57f81b3eb9be77c367dda1dc077e0352b460fcd4ee4cc2f8ba31b1e84a6
+    input_bytes: 4915200
+    output_bytes: 2856032
+    task_output_bytes: 2856000
+    timing_offset: 2856000

@@ -6,8 +6,10 @@ not use them).  For the first N items of a COCO input selection:
 
   1. the canonical Workload preprocessing (sdv_bmt, stdlib) produces the input tensors;
   2. the native NVIDIA backend (tools/stage2b_g_real/build/raw_dump, same code as the runner, same DUT runtime
-     options) executes them on the GPU and dumps the raw 8400x85 outputs;
-  3. ONNX Runtime (CPU execution provider) runs the downloaded ONNX model on the same tensors;
+     options) executes them on the GPU and dumps the raw anchors x 85 outputs (input size and anchor count from
+     the workload spec);
+  3. ONNX Runtime (CPU execution provider) runs the downloaded ONNX model (the file the workload's cuDNN plan was
+     converted from, SHA-256 checked against the workload's artifact_sha256) on the same tensors;
   4. raw outputs are compared per channel group (box offsets, log sizes, objectness, class scores), and both
      are post-processed by the Python twin (YoloxCocoWorkload.postprocess) and compared at detection level;
   5. optionally (--bundle RUN_DIR) the bundle's native task-output bytes for the same items are compared with
@@ -85,6 +87,11 @@ def main() -> int:
     a = ap.parse_args()
 
     rp = load_plan(a.plan)
+    size, anchors = rp.workload.options["input_size"], rp.workload.options["num_anchors"]
+    plan_file = REPO / rp.workload.options["device_program"]["plan"]
+    model = plan_file.parent / json.loads(plan_file.read_text(encoding="utf-8"))["model"]["onnx_file"]
+    if hashlib.sha256(model.read_bytes()).hexdigest() != rp.workload.artifact_sha256:
+        raise SystemExit(f"{model}: SHA-256 differs from the workload's artifact_sha256")
     comps = build_components(rp)
     workload, dut, provider = comps.workload, comps.dut, comps.input_provider
     items = list(provider.items())[: a.count]
@@ -113,29 +120,31 @@ def main() -> int:
         dump = json.loads(proc.stdout.strip().splitlines()[-1])
         if not dump.get("ok"):
             raise SystemExit(f"raw_dump failed: {dump} {proc.stderr[-2000:]}")
-        gpu_raw = np.fromfile(raw_path, dtype="<f4").reshape(len(items), 8400, 85)
+        gpu_raw = np.fromfile(raw_path, dtype="<f4").reshape(len(items), anchors, 85)
 
         so = ort.SessionOptions()
         so.intra_op_num_threads = a.threads
         so.inter_op_num_threads = 1
-        model = REPO / "models/yolox-s/yolox_s.onnx"
         sess = ort.InferenceSession(str(model), so, providers=["CPUExecutionProvider"])
+        input_name = sess.get_inputs()[0].name
         diffs = {g: [] for g in GROUPS}
         rel = {g: [] for g in GROUPS}
         det_cmp, native_vs_python, ort_rows = [], [], []
         bundle_blobs = {}
         if a.bundle:
             outputs = (Path(a.bundle) / "outputs.bin").read_bytes()
+            request_item = {}
             for line in open(Path(a.bundle) / "events.jsonl"):
                 e = json.loads(line)
-                if e.get("kind") == "completed":
+                if e.get("kind") == "issued":
+                    request_item[e["request_id"]] = e["item_indices"][0]
+                elif e.get("kind") == "completed":
                     ref = e["output_ref"]
-                    req_item = e["request_id"]  # request i serves item i in these plans
-                    bundle_blobs[req_item] = outputs[ref["offset"]:ref["offset"] + ref["length"]]
+                    bundle_blobs[request_item[e["request_id"]]] = outputs[ref["offset"]:ref["offset"] + ref["length"]]
         t0 = time.time()
         for k, it in enumerate(items):
-            x = np.frombuffer(tensors[k], dtype="<f4").reshape(1, 3, 640, 640)
-            ref_raw = sess.run(None, {"images": x})[0][0]
+            x = np.frombuffer(tensors[k], dtype="<f4").reshape(1, 3, size, size)
+            ref_raw = sess.run(None, {input_name: x})[0][0]
             g_raw = gpu_raw[k]
             for name, sl in GROUPS.items():
                 d = np.abs(g_raw[:, sl] - ref_raw[:, sl])

@@ -260,15 +260,17 @@ UUID로 장치 선택 → primary context(`CU_CTX_SCHED_BLOCKING_SYNC`) → work
 
 승인 근거: 2026-10-08 프로젝트 review 결정 "REVIEW DECISION — CONTINUE STAGE 2b-G"(실제 model + 실제 dataset baseline)와 같은 날의 후속 결정(목록 중 YOLOX-S 선택과 공식 `yolox_s.onnx` download, GPU runtime은 cuDNN/cuBLAS, offline 도구에 한해 Pillow·onnxruntime, tools 전용 venv의 pycocotools, 30 Hz와 100 Hz). GPU는 여전히 reference accelerator다. 이 경로의 결과는 NPU 결과가 아니다.
 
+v0.1.2(2026-10-23 승인): 같은 release의 공식 YOLOX Tiny/M/L/X ONNX를 추가해 YOLOX 다섯 model이 같은 경로로 돈다. 입력 크기와 anchor 수는 workload spec(`options.input_size`, `options.num_anchors`)이 선언하고, 다섯 model의 baseline은 하나의 replay rate를 쓴다(아래 11.2).
+
 ### 11.1 구성 요소
 
 | 위치 | 내용 |
 |---|---|
-| `src/sdv_bmt/workload/yolox.py` | `YoloxCocoWorkload`(`yolox_coco`): PPM payload → YOLOX letterbox 전처리(BGR, CHW float32, 640×640, pad 114, bilinear) → raw 8400×85 출력의 decode + class-aware NMS + top-100 → canonical JSON. `native_output_context(item)`이 출력 pipeline에 원본 크기와 image id를 넘긴다 |
+| `src/sdv_bmt/workload/yolox.py` | `YoloxCocoWorkload`(`yolox_coco`): PPM payload → YOLOX letterbox 전처리(BGR, CHW float32, S×S, pad 114, bilinear) → raw anchor×85 출력의 decode + class-aware NMS + top-100 → canonical JSON. `native_output_context(item)`이 출력 pipeline에 원본 크기와 image id를 넘긴다. S와 anchor 수는 workload spec의 `options.input_size`(32의 배수: YOLOX-S/M/L/X 640, Tiny 416)와 `options.num_anchors`((S/8)²+(S/16)²+(S/32)²: 8,400 / 3,549)이고, `device_program`의 byte 수와 맞아야 한다 |
 | `src/sdv_bmt/input/dataset_fixture.py`, `fixture_index.py` | index row가 `payload_file`(index 디렉토리 안의 상대 경로) + `payload_sha256`을 가질 수 있다. PREFLIGHT는 선언 digest를 쓰고 `open()`이 파일을 읽어 digest를 재검증한다. 이런 index의 provider 이름은 `dataset_files` |
 | `native/src/nvidia/cudnn_plan.hpp` | `cudnn_plan` device program 실행기: plan(JSON)·weight 파일 SHA-256 확인, weight upload, activation arena, cuDNN descriptor, algorithm 선택(pinned 또는 heuristic), NVRTC glue kernel(space-to-depth, bias+activation(+residual), nearest ×2 upsample, copy, head transpose, frequency probe) |
 | `native/src/nvidia/backend.hpp` | program kind `cuda_c`(기존, reference workload)와 `cudnn_plan`. submit은 [H2D] → probe → plan step → D2H를 한 stream에 넣는다. `describe`가 cuDNN version과 library file SHA-256을 device identity에 넣는다 |
-| `native/src/common/yolox_output.hpp`, `output_pipeline.hpp` | YOLOX 출력 pipeline의 native twin, run spec의 `output_pipeline.kind`에 따른 선택. 출력 pipeline 상수(threshold, max detections)가 Python 선언과 다르면 native가 거절한다 |
+| `native/src/common/yolox_output.hpp`, `output_pipeline.hpp` | YOLOX 출력 pipeline의 native twin, run spec의 `output_pipeline.kind`에 따른 선택. 출력 pipeline 상수(threshold, max detections)가 Python 선언과 다르면 native가 거절한다. 입력 크기는 Python이 선언한 `input_size`를 받아 anchor 수를 같은 식으로 계산한다(32의 배수가 아니면 거절) |
 | `native/src/common/loop.hpp`, `runner.hpp` | raw 출력은 backend buffer의 view로 넘긴다(측정 경로 안 복사 없음). 출력 buffer는 pipeline이 선언한 상한으로 MEASURE 전에 예약한다. `stage` 명령의 item이 `output_context`를 가질 수 있다 |
 | `src/sdv_bmt/dut/nvidia/adapter.py` | `cudnn_plan` program(파일은 repository 기준 상대 경로, SHA-256 pin), runtime option `cudnn`(math type, algorithm policy, workspace 상한, pinned table)과 `frequency_probe_cycles` |
 
@@ -277,12 +279,14 @@ UUID로 장치 선택 → primary context(`CU_CTX_SCHED_BLOCKING_SYNC`) → work
 | 도구 | 역할 | 의존성 |
 |---|---|---|
 | `build_coco_subset.py` | COCO val2017 앞 1,000장(image id 순)을 Pillow로 한 번 decode해 PPM payload와 index(annotation inline) 생성 | system Pillow(승인, 도구 전용) |
-| `onnx_reader.py`, `build_yolox_plan.py` | ONNX protobuf를 직접 읽어 cuDNN plan과 weight 파일로 변환. 알 수 없는 graph pattern은 거절 | stdlib |
+| `onnx_reader.py`, `build_yolox_plan.py` | ONNX protobuf를 직접 읽어 cuDNN plan과 weight 파일로 변환(YOLOX Tiny/S/M/L/X). 입력은 1×3×S×S(S는 32의 배수), 출력 anchor 수와 head 격자(S/8, S/16, S/32)를 확인한다. 알 수 없는 graph pattern은 거절 | stdlib |
 | `raw_dump.cpp`, `validate_numerics.py` | 같은 native backend로 raw 출력을 뽑아 ONNX Runtime(CPU) 출력과 비교, Python twin과 native 출력 byte 비교 | system onnxruntime·numpy(승인, 도구 전용) |
 | `coco_eval.py`, `coco_quality.py` | COCOeval(bbox) 의미의 stdlib 재구현, bundle + digest가 맞는 index로 AP 계산 | stdlib |
 | `coco_eval_crosscheck.py` | pycocotools와 같은 입력으로 비교 | `.venv-tools`의 pycocotools(승인) |
 | `capture_golden.py` | 지정한 reference-capture run의 출력 digest를 output reference로 추출 | stdlib |
 | `analyze_baseline.py`, `guard_cases.py`, `evidence_chain.py`, `nsys_extract_plan.py`, `nsys_align_plan.py` | 기술 통계, guard 결과, request 단위 증거 사슬, multi-kernel nsys 교차 검증 | stdlib |
+
+v0.1.2: `tools/yolox_family/make_experiments.py --rate-hz R`(stdlib)가 YOLOX 다섯 model의 experiment 파일(algorithm probe, golden capture, baseline)을 쓴다. baseline의 replay rate는 이 도구의 인자 하나에만 있고, deadline(frame period)은 `floor(10⁹ / R)`로 따라간다. workload·DUT config에는 rate가 없다.
 
 ### 11.3 Dependency
 

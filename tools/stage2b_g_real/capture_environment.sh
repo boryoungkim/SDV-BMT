@@ -31,8 +31,8 @@ print(json.dumps({'code_identity': code_identity(), 'native_source_tree_sha256':
 " > $E/code_identity.json
 sha256sum $CUDNN_ROOT/lib/libcudnn*.so.9 > $E/cudnn_libs.sha256
 pip3 show nvidia-cudnn-cu12 2>/dev/null | head -3 > $E/cudnn_package.txt
-sha256sum models/yolox-s/* datasets/coco-val2017-first1000/index.jsonl datasets/coco-val2017-first1000/dataset_manifest.json ${COCO_ANNOTATIONS:-} > $E/assets.sha256
-sha256sum tools/stage2b_g_real/*.py tools/stage2b_g_real/*.cpp tools/stage2b_g_real/*.sh tools/stage1r_g/run_and_evaluate.py > $E/tools.sha256
+sha256sum models/yolox-*/* datasets/coco-val2017-first1000/index.jsonl datasets/coco-val2017-first1000/dataset_manifest.json ${COCO_ANNOTATIONS:-} > $E/assets.sha256
+sha256sum tools/stage2b_g_real/*.py tools/stage2b_g_real/*.cpp tools/stage2b_g_real/*.sh tools/yolox_family/*.py tools/stage1r_g/run_and_evaluate.py > $E/tools.sha256
 python3 -c "import PIL, onnxruntime, numpy; print('Pillow', PIL.__version__); print('onnxruntime', onnxruntime.__version__); print('numpy', numpy.__version__)" > $E/offline_tool_packages.txt
 g++ --version | head -1 > $E/toolchain.txt; $CUDA_HOME/bin/nvcc --version | tail -2 >> $E/toolchain.txt
 echo done
