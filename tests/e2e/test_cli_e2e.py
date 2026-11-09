@@ -34,7 +34,7 @@ def run_one(plan: str, out: Path) -> Path:
 def test_console_script_is_installed():
     assert SCRIPT.is_file()
     proc = subprocess.run([str(SCRIPT), "--version"], capture_output=True, text=True)
-    assert proc.returncode == 0 and proc.stdout.strip() == "sdv-bmt 0.1.0"
+    assert proc.returncode == 0 and proc.stdout.strip() == "sdv-bmt 0.1.2"
 
 
 def test_help_lists_only_validate_run_evaluate():

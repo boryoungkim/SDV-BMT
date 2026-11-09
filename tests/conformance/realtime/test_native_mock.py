@@ -96,6 +96,9 @@ def test_injected_faults_follow_stage_1a_states(tmp_path):
 def test_a_long_request_holds_the_slot_and_arrivals_are_dropped(tmp_path):
     rp = _with_dut(variant(load(FLOOR), input_spec=load("rg-gpu-timeout-1ms").input_spec),
                    items=[{"item_index": 0, "polls": LONG}])
+    # The long request must complete inside the request timeout on any host. It took about 55 ms on the reference
+    # host but more than the floor plan's 100 ms once on a shared CI runner, so this test allows 1 s.
+    rp = _with_run(rp, request_timeout_ns=1_000_000_000, drain_ns=1_000_000_000)
     out = run_plan(rp, tmp_path)  # 1 kHz
     states, events = _states(out.run_dir)
     assert states[0] == "completed" and states[1] == "dropped"

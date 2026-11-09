@@ -12,6 +12,7 @@ Stage 1R-G GPU realtime harness (C++ native measurement plane) ── 구현·�
 Stage 2b-G GPU dataset baseline / measurement validation ── 측정 시스템 검증 부분 승인(2026-10-08)
    └─ 계속: 실제 model + dataset baseline(YOLOX-S, COCO val2017 1,000장, cuDNN) ── 보고 완료(2026-10-08)
    └─ Model-level Metric Set v1 구현 + canonical GPU metric report ── 승인(2026-10-08), 구현 완료(v0.1.0)
+   └─ model 확장: YOLOX Tiny/S/M/L/X(COCO), DeepLabV3+ R-18/50/101(Cityscapes), Metric Set v1.1 ── 완료(v0.1.2, 2026-11-10)
    │
    └── GPU track은 아직 닫히지 않았다. Stage 2a-N은 실제 model baseline 검토 전까지 시작하지 않는다
             ▼

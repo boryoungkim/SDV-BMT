@@ -8,8 +8,8 @@ the upstream terms before redistributing anything.
 
 ## Contained in this repository
 
-Nothing third-party is vendored. In particular, the repository contains **no** model weights, no COCO images
-or annotations, no NVIDIA headers or libraries, and no profiler output. The tracked files that refer to
+Nothing third-party is vendored. In particular, the repository contains **no** model weights, no COCO or
+Cityscapes images or annotations, no NVIDIA headers or libraries, and no profiler output. The tracked files that refer to
 third-party data are:
 
 | file | content | origin |
@@ -50,13 +50,13 @@ The NVIDIA native runner (`make -C native`, target `build/sdv-bmt-native-nvidia`
 the installed CUDA toolkit and links the installed driver libraries and cuDNN. None of these is part of this
 repository.
 
-| component | version used for the v0.1.0 reference evidence | license (declared) |
+| component | version used for the v0.1.0 and v0.1.2 reference evidence | license (declared) |
 |---|---|---|
 | CUDA Toolkit headers, NVRTC, CUDA driver API, NVML | CUDA 13.0, driver 580.119.02 | NVIDIA CUDA Toolkit EULA / NVIDIA driver license |
 | cuDNN (pip package `nvidia-cudnn-cu12`) | 9.1.0.70 | NVIDIA proprietary software license |
 | Nsight Systems (optional profiler cross-check) | 2025.3.2 | NVIDIA software license |
 
-## Model and dataset used for the GPU reference result (downloaded / prepared by the user)
+## Models and datasets used for the GPU reference results (downloaded / prepared by the user)
 
 | item | source | license / terms |
 |---|---|---|

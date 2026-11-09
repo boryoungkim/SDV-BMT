@@ -7,8 +7,9 @@ Commands (there is deliberately no ``analyze`` command)::
                                         or realtime (native measurement plane), writes run bundles
     sdv-bmt evaluate RUN_DIR [--eval-config FILE] [--catalog VERSION]
                                         bundle-only evaluation into a new eval_id
-                                        (default catalog: Model-level Metric Set v1;
-                                        bmt-portable-v1-stage1a reproduces legacy evaluations)
+                                        (default catalog: Model-level Metric Set v1.1;
+                                        sdv-bmt-model-metric-set-v1 and bmt-portable-v1-stage1a
+                                        reproduce earlier evaluations)
 
 Output is JSON on stdout and carries the plan's (or the bundle's)
 ``execution_kind``; mock output also carries the MOCK notice, and a banner with

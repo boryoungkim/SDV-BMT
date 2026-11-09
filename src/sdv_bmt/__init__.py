@@ -9,7 +9,7 @@ executes on a real GPU (``execution_kind=actual``).  GPU results validate the
 measurement system; they are not NPU performance results.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.2"
 STAGE = "1R-G"
 MOCK_NOTICE = (
     "MOCK: Stage 1A virtual-clock execution with FakeDUT; "
