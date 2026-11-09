@@ -30,6 +30,7 @@ from ..contracts.ids import digest_of, new_eval_id, to_jsonable, utc_now_iso
 from ..contracts.records import (
     LEGACY_METRIC_CATALOG_VERSION,
     METRIC_CATALOG_VERSION,
+    METRIC_CATALOG_VERSION_V1,
     MetricResult,
     MetricSetResult,
     raw_evidence_files,
@@ -60,14 +61,17 @@ from .catalog import CATALOG_VERSION, METRICS, P99_MIN_SAMPLES, PERCENTILE_METHO
 from .identity import output_identity
 from .portable import INF, Computed, maximum, per_second, percentile, planned_percentile, rate
 from .quality_detection import quality_protocol
+from .quality_segmentation import segmentation_protocol
+from ..contracts.quality import CITYSCAPES_SEMSEG_MIOU_V1
 
 S = RequestState
 EVAL_SCHEMA_VERSION = 1  # legacy catalog evaluations
 METRIC_SET_EVAL_SCHEMA_VERSION = 2  # Metric Set v1 evaluations (layer, population, context)
 EVAL_VOLATILE_FIELDS = ("eval_id", "run_id", "created_at_utc", "outputs")
-CATALOGS = (METRIC_CATALOG_VERSION, LEGACY_METRIC_CATALOG_VERSION)
-DEFAULT_CATALOG = METRIC_CATALOG_VERSION
+CATALOGS = (METRIC_CATALOG_VERSION, METRIC_CATALOG_VERSION_V1, LEGACY_METRIC_CATALOG_VERSION)
+DEFAULT_CATALOG = METRIC_CATALOG_VERSION  # Metric Set v1.1 (v0.1.2); v1 and the legacy catalog stay selectable
 assert CATALOG_VERSION == LEGACY_METRIC_CATALOG_VERSION and metric_set_v1.CATALOG_VERSION == METRIC_CATALOG_VERSION
+assert metric_set_v1.CATALOG_VERSION_V1 == METRIC_CATALOG_VERSION_V1
 
 
 class EvaluationError(RuntimeError):
@@ -113,17 +117,23 @@ def canonical_metric_content(params: dict[str, Any], metrics: list[dict[str, Any
     }
 
 
-def metric_set_parameters(bundle: RunBundle, override: Optional[EvaluationOverride]
-                          ) -> tuple[dict[str, Any], dict[str, str]]:
+def metric_set_parameters(bundle: RunBundle, override: Optional[EvaluationOverride],
+                          catalog: str = METRIC_CATALOG_VERSION_V1) -> tuple[dict[str, Any], dict[str, str]]:
     """Metric Set v1 evaluation protocol (part of the evaluation identity) and where each overridable
     parameter came from.  The deadline override keeps the legacy semantics (it replaces the run_spec
     deadline); the required rate and the detection operating point come only from the override."""
     params, deadline_source = evaluation_parameters(bundle, override)
     required = override.required_rate_hz if override is not None else None
     point = override.quality_operating_point if override is not None else None
-    quality = quality_protocol(bundle, point)
+    reference = bundle.manifest.get("quality_reference")
+    evaluator = (reference or {}).get("evaluator") or bundle.run_spec["resolved_plan"]["workload"].get(
+        "quality_evaluator")
+    segmentation = catalog == METRIC_CATALOG_VERSION and evaluator == CITYSCAPES_SEMSEG_MIOU_V1
+    if segmentation and point is not None:
+        raise EvaluationError("a detection operating point does not apply to the segmentation quality evaluator")
+    quality = segmentation_protocol() if segmentation else quality_protocol(bundle, point)
     params = {
-        "catalog_version": METRIC_CATALOG_VERSION,
+        "catalog_version": catalog,
         "percentile_method": params["percentile_method"],
         "p99_min_samples": params["p99_min_samples"],
         "planned_percentile_noncompleted_value": params["planned_percentile_noncompleted_value"],
@@ -136,7 +146,7 @@ def metric_set_parameters(bundle: RunBundle, override: Optional[EvaluationOverri
         "deadline": deadline_source,
         "required_rate_hz": "override" if required is not None else "not_supplied",
         "quality_operating_point": ("not_applicable" if quality is None or not quality.get("implemented")
-                                    else "override" if point is not None else "evaluator_default"),
+                                    or segmentation else "override" if point is not None else "evaluator_default"),
     }
     return params, sources
 
@@ -197,10 +207,10 @@ def evidence_checks(bundle: RunBundle) -> list[dict[str, Any]]:
 
 
 def canonical_metric_set_content(params: dict[str, Any], context: dict[str, Any],
-                                 metrics: list[dict[str, Any]]) -> dict[str, Any]:
-    """Metric Set v1 evaluation result without volatile identifiers (eval_id/run_id)."""
+                                 metrics: list[dict[str, Any]], catalog: str = METRIC_CATALOG_VERSION_V1) -> dict[str, Any]:
+    """Metric Set v1 / v1.1 evaluation result without volatile identifiers (eval_id/run_id)."""
     return {
-        "catalog_version": METRIC_CATALOG_VERSION,
+        "catalog_version": catalog,
         "parameters": params,
         "context": context,
         "metrics": [{k: v for k, v in m.items() if k != "eval_id"} for m in metrics],
@@ -272,7 +282,8 @@ def measurement_gate(bundle: RunBundle) -> tuple[Optional[tuple[MetricStatus, st
     return None, folded, counts, window
 
 
-def compute_metric_set(bundle: RunBundle, params: dict[str, Any], eval_id: str) -> list[MetricSetResult]:
+def compute_metric_set(bundle: RunBundle, params: dict[str, Any], eval_id: str,
+                       catalog: str = METRIC_CATALOG_VERSION_V1) -> list[MetricSetResult]:
     manifest = bundle.manifest
     boundary_id = manifest["measurement_boundary"]["measurement_boundary_id"]
     kind = bundle_execution_kind(bundle)
@@ -284,9 +295,9 @@ def compute_metric_set(bundle: RunBundle, params: dict[str, Any], eval_id: str) 
             measurement_boundary_id=boundary_id, unit=m.unit, status=status, value=None,
             population={"name": "not_evaluated", "sample_count": 0}, window=None, method=m.method,
             inputs=("events.jsonl",), notes=(), eval_id=eval_id, execution_kind=kind, status_reason=reason,
-        ) for m in metric_set_v1.METRICS]
+        ) for m in metric_set_v1.CATALOG_METRICS[catalog]]
     return metric_set_v1.compute_metric_set_v1(bundle, folded, counts, window, params, eval_id, kind, boundary_id,
-                                               _CLOCK_NOTES[bundle_clock_domain(bundle)])
+                                               _CLOCK_NOTES[bundle_clock_domain(bundle)], catalog)
 
 
 def compute_metrics(bundle: RunBundle, params: dict[str, Any], eval_id: str) -> list[MetricResult]:
@@ -472,9 +483,9 @@ def evaluate_run(
             context: dict[str, Any] = {}
             checks: list[dict[str, Any]] = []  # the legacy evaluation format is frozen
         else:
-            params, sources = metric_set_parameters(bundle, override)
+            params, sources = metric_set_parameters(bundle, override, catalog)
             deadline_source = sources["deadline"]
-            metrics = compute_metric_set(bundle, params, eval_id)
+            metrics = compute_metric_set(bundle, params, eval_id, catalog)
             context = metric_set_context(bundle)
             checks = evidence_checks(bundle)
     except (KeyError, TypeError, SpecError) as exc:
@@ -483,7 +494,7 @@ def evaluate_run(
     if legacy:
         content_digest = digest_of(canonical_metric_content(params, metric_dicts))
     else:
-        content_digest = digest_of(canonical_metric_set_content(params, context, metric_dicts))
+        content_digest = digest_of(canonical_metric_set_content(params, context, metric_dicts, catalog))
 
     # Raw evidence must be unchanged by evaluation; nothing is written otherwise.
     after = verify_raw_files(run_dir, raw, names)
@@ -525,7 +536,7 @@ def evaluate_run(
             "mock_notice": notice,
             "eval_id": eval_id,
             "run_id": bundle.manifest["run_id"],
-            "catalog_version": METRIC_CATALOG_VERSION,
+            "catalog_version": catalog,
             "measurement_boundary_id": bundle.manifest["measurement_boundary"]["measurement_boundary_id"],
             "run_status": bundle.manifest["status"],
             "parameters": params,
@@ -537,9 +548,9 @@ def evaluate_run(
         evaluator = {
             "module": __name__,
             "code_identity": code_identity(),
-            "catalog_version": METRIC_CATALOG_VERSION,
-            "definition_versions": {m.metric_id: m.definition_version for m in metric_set_v1.METRICS},
-            "metric_layers": {m.metric_id: m.layer.value for m in metric_set_v1.METRICS},
+            "catalog_version": catalog,
+            "definition_versions": {m.metric_id: m.definition_version for m in metric_set_v1.CATALOG_METRICS[catalog]},
+            "metric_layers": {m.metric_id: m.layer.value for m in metric_set_v1.CATALOG_METRICS[catalog]},
             "quality_evaluator": None if quality is None else {
                 "evaluator": quality["evaluator"], "implemented": quality["implemented"],
                 "module": quality.get("module")},
@@ -550,7 +561,7 @@ def evaluate_run(
             "bundle": {
                 "manifest_schema_version": bundle.manifest["schema_version"],
                 "metric_definition": context["bundle_metric_definition"],
-                "catalog_matches_bundle_metric_definition": context["bundle_metric_definition"] == METRIC_CATALOG_VERSION,
+                "catalog_matches_bundle_metric_definition": context["bundle_metric_definition"] == catalog,
             },
         }
     write_json_exclusive(staging / EVAL_MANIFEST_FILE, {

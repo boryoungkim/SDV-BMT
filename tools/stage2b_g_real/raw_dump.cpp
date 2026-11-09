@@ -66,6 +66,7 @@ int main(int argc, char** argv) {
         r["items"] = slot;
         r["cudnn_algorithm_table_sha256"] =
             facts.has("cudnn_plan") ? facts.at("cudnn_plan").at("cudnn_algorithm_table_sha256") : Json(nullptr);
+        r["cudnn_plan_facts"] = facts.has("cudnn_plan") ? facts.at("cudnn_plan") : Json(nullptr);  // v0.1.2
         r["cleanup"] = be.cleanup();
         std::printf("%s\n", r.dump().c_str());
         return 0;

@@ -8,7 +8,7 @@ family:
   source_version: "1"
   task: fake-identity
   annotation_schema: null
-  preprocessing_contract: fake-bytes-v1
+  preprocessing_contract: fake-identity-input/1
   streams: [cam_front, cam_rear]
   timing:
     source_field: t_capture_us

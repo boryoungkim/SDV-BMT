@@ -30,6 +30,17 @@ def _run_cfg(timeout_ms: int, drain_ms: int) -> RunConfig:
     })
 
 
+def _frame_deadline(rate_hz: float):
+    """The g3 evaluation section with the frame-period deadline of ``rate_hz`` (plan validation requires the
+    deadline of a frame_period policy to follow the replay rate)."""
+    from sdv_bmt.contracts.specs import DeadlineSpec
+    from sdv_bmt.contracts.status import DeadlinePolicy
+    from sdv_bmt.runner.plan import frame_period_ns
+
+    base = load("g3-timeout-late-completion").plan.evaluation
+    return dataclasses.replace(base, deadline=DeadlineSpec(DeadlinePolicy.FRAME_PERIOD, frame_period_ns(rate_hz)))
+
+
 def _replay(**kw) -> ReplayPolicy:
     return parse_strict(ReplayPolicy, kw)
 
@@ -79,7 +90,8 @@ def test_g3_timeout_holds_slot_until_late_completion(tmp_path):
 
 def test_slot_freed_at_t_is_available_to_arrival_at_t(tmp_path):
     rp = variant(load("g3-timeout-late-completion"), dut=_fixed(40),
-                 plan={"replay": _replay(mode="fixed_rate", rate_hz=25), "run": _run_cfg(1000, 1000)})
+                 plan={"replay": _replay(mode="fixed_rate", rate_hz=25), "run": _run_cfg(1000, 1000),
+                       "evaluation": _frame_deadline(25)})
     out = run_plan(rp, tmp_path)
     assert out.request_counts["completed"] == 3 and out.request_counts["dropped"] == 0
     assert request_trace(out.run_dir)[2:5] == [
@@ -205,7 +217,8 @@ def test_late_completion_with_dut_error(tmp_path):
 
 def test_drain_cap_reports_outstanding_late_completion(tmp_path):
     rp = variant(load("g3-timeout-late-completion"), dut=_fixed(300),
-                 plan={"replay": _replay(mode="fixed_rate", rate_hz=1), "run": _run_cfg(50, 100)})
+                 plan={"replay": _replay(mode="fixed_rate", rate_hz=1), "run": _run_cfg(50, 100),
+                       "evaluation": _frame_deadline(1)})
     rp = variant(rp, input_spec=dataclasses.replace(rp.input_spec, selection=dataclasses.replace(
         rp.input_spec.selection, count=1)))
     out = run_plan(rp, tmp_path)

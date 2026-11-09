@@ -406,7 +406,8 @@ int native_main(int argc, char** argv) {
         }
         if (argc >= 3 && std::string(argv[1]) == "encode-output") {
             // test helper: argv[2] = output_pipeline spec JSON; stdin lines {"item_index", "raw_path", "raw_offset",
-            // "raw_bytes", "output_context"?} -> {"item_index", "blob"} or {"item_index", "error", "phase"}
+            // "raw_bytes", "output_context"?} -> {"item_index", "blob"} ("blob_hex" for the binary label-map codec)
+            // or {"item_index", "error", "phase"}
             OutputPipeline out(Json::parse(argv[2]));
             std::string line;
             while (std::getline(std::cin, line)) {
@@ -425,7 +426,18 @@ int native_main(int argc, char** argv) {
                 Json o = Json::object();
                 o["item_index"] = item;
                 if (out.encode(0, item, raw, blob, phase, err)) {
-                    o["blob"] = blob;
+                    if (out.kind() == "labelmap_rowrle_v1") {  // binary codec: hex, not a JSON text string
+                        static const char* digits = "0123456789abcdef";
+                        std::string hex;
+                        hex.reserve(2 * blob.size());
+                        for (unsigned char c : blob) {
+                            hex.push_back(digits[c >> 4]);
+                            hex.push_back(digits[c & 15]);
+                        }
+                        o["blob_hex"] = hex;
+                    } else {
+                        o["blob"] = blob;
+                    }
                 } else {
                     o["error"] = error_json(err);
                     o["phase"] = phase;

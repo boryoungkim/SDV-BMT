@@ -107,6 +107,14 @@ class NvidiaOptions:
                 raise ValueError("frequency_probe_cycles must be >= 0")
 
 
+def _check_timing_alignment(timing_offset: Optional[int]) -> None:
+    """The device writes the four timing words as 64-bit stores, so their offset must be 8-byte aligned (a
+    misaligned offset faults on the device with an unrelated-looking error, v0.1.2 YOLOX report section 12)."""
+    if timing_offset is not None and timing_offset % 8:
+        raise ValueError(f"device_program.timing_offset {timing_offset} is not a multiple of 8 (the four u64 timing "
+                         "words need 8-byte alignment)")
+
+
 @dataclass(frozen=True)
 class DeviceProgram:
     """Calling convention: ``entry(input, scratch_0..scratch_n, output)``, one block."""
@@ -132,6 +140,7 @@ class DeviceProgram:
             raise ValueError("device_program.task_output_bytes must be in 1..output_bytes")
         if self.timing_offset is not None and self.timing_offset + 32 > self.output_bytes:
             raise ValueError("device_program.timing_offset leaves no room for 4 u64 timing words")
+        _check_timing_alignment(self.timing_offset)
 
 
 @dataclass(frozen=True)
@@ -159,6 +168,7 @@ class CudnnPlanProgram:
         if self.timing_offset is not None and (self.timing_offset < self.task_output_bytes
                                                or self.timing_offset + 32 > self.output_bytes):
             raise ValueError("device_program.timing_offset must follow the task output and fit 4 u64 words")
+        _check_timing_alignment(self.timing_offset)
 
 
 def _quantiles(values: list[float]) -> Optional[dict[str, Any]]:

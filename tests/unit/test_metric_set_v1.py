@@ -14,7 +14,7 @@ from sdv_bmt.contracts.specs import DeadlineSpec, EvaluationOverride, ReplayPoli
 from sdv_bmt.contracts.status import DeadlinePolicy, MetricLayer, MetricStatus, ReplayMode
 from sdv_bmt.metrics import metric_set_v1
 from sdv_bmt.metrics.evaluator import CATALOGS, DEFAULT_CATALOG, EvaluationError
-from tests._helpers import LEGACY_CATALOG, METRIC_SET_V1, MS, evaluate, load, metric_map, reseal, run_plan, variant
+from tests._helpers import LEGACY_CATALOG, METRIC_SET_V1, METRIC_SET_V1_1, MS, evaluate, load, metric_map, reseal, run_plan, variant
 
 M = MetricStatus
 
@@ -70,9 +70,12 @@ def g1_timed(g1):
 
 
 def test_catalog_identity_layers_and_default():
-    assert DEFAULT_CATALOG == METRIC_SET_V1 and set(CATALOGS) == {METRIC_SET_V1, LEGACY_CATALOG}
+    # v0.1.2: Metric Set v1.1 (v1 + 2 segmentation quality metrics) is the default; v1 stays selectable, frozen
+    assert DEFAULT_CATALOG == METRIC_SET_V1_1 and set(CATALOGS) == {METRIC_SET_V1_1, METRIC_SET_V1, LEGACY_CATALOG}
     ids = [m.metric_id for m in metric_set_v1.METRICS]
     assert len(ids) == len(set(ids)) == 91
+    assert [m.metric_id for m in metric_set_v1.METRICS_V1_1] == ids + [
+        "quality.segmentation.coverage", "quality.segmentation.conditional.miou"]
     layers = {m.metric_id: m.layer for m in metric_set_v1.METRICS}
     assert layers["bmt.dut_service.p99"] is MetricLayer.PERFORMANCE
     assert layers["bmt.submit.p50"] is MetricLayer.DIAGNOSTICS
@@ -279,14 +282,19 @@ def test_counts_rates_and_population_context(tmp_path):
     ctx = doc["context"]
     assert ctx["planned_count"] == 3 and ctx["completed_count"] == 0 and ctx["run_count"] == 1
     assert ctx["input_selection_digest"] and ctx["items_digest"] and ctx["measurement_boundary_id"]
-    assert ctx["bundle_metric_definition"] == METRIC_SET_V1 and ctx["configured_n"] == 1
+    # new runs record the v0.1.2 default catalog as their metric definition
+    assert ctx["bundle_metric_definition"] == METRIC_SET_V1_1 and ctx["configured_n"] == 1
     for metric in doc["metrics"]:
         assert metric["layer"] in {layer.value for layer in MetricLayer}
         assert "name" in metric["population"] and "sample_count" in metric["population"]
     em = json.loads((outcome.eval_dir / "eval_manifest.json").read_text())
     assert em["schema_version"] == 2 and em["evaluator"]["catalog_version"] == METRIC_SET_V1
     assert em["evaluator"]["metric_layers"]["bmt.submit.p50"] == "diagnostics"
-    assert em["bundle"]["catalog_matches_bundle_metric_definition"] is True
+    # the bundle records v1.1 (the v0.1.2 default); a v1 evaluation of it says so, a v1.1 evaluation matches
+    assert em["bundle"]["catalog_matches_bundle_metric_definition"] is False
+    em11 = json.loads((evaluate(out.run_dir, "eval-test-v1-1", catalog=METRIC_SET_V1_1).eval_dir / "eval_manifest.json").read_text())
+    assert em11["evaluator"]["catalog_version"] == METRIC_SET_V1_1
+    assert em11["bundle"]["catalog_matches_bundle_metric_definition"] is True
 
 
 def test_failed_run_metrics_are_not_collected(tmp_path):

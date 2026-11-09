@@ -1,0 +1,33 @@
+# v0.1.2 DeepLab part: DeepLabV3+ (ResNet-101-D8 / ResNetV1c, DepthwiseSeparableASPPHead) on Cityscapes val, the mmsegmentation
+# checkpoint deeplabv3plus_r101-d8_512x1024_80k_cityscapes exported to ONNX by tools/deeplab_family/export_onnx.py (BatchNorm
+# folded; the ONNX file below is the model artifact) and converted to a cuDNN plan by tools/deeplab_family/build_deeplab_plan.py.
+# Whole-image inference at 2048x1024; the device runs the final bilinear resize and the argmax and returns the uint8 label map.
+# Task quality: Cityscapes 19-class mIoU (cityscapes-semseg-miou/1, Metric Set v1.1) from the ground truth frozen in the bundle.
+# ACTUAL GPU reference accelerator; not an NPU result.  Results of different models are compared side by side, not attributed.
+schema_version: 1
+workload_id: deeplabv3plus-r101-cityscapes-v1
+implementation: deeplabv3plus_cityscapes
+task: cityscapes-semantic-segmentation-19class
+artifact_sha256: 86d0f08c1852723892777c0216936e5b790d3b9345f0e83473fb21309c129745
+precision: fp32
+batch: 1
+preprocess: {id: mmseg-cityscapes-normalize-rgb, version: "1"}
+postprocess: {id: labelmap-u8-check, version: "1"}
+codec: {id: labelmap-u8-rowrle, version: "1"}
+output_ready: canonical task output (uint8 label map of the image, labelmap-u8-rowrle/1) encoded and appended to outputs.bin
+quality_evaluator: cityscapes-semseg-miou/1
+options:
+  input_width: 2048
+  input_height: 1024
+  num_classes: 19
+  device_program:
+    language: cudnn_plan
+    plan: models/deeplabv3plus-r101/deeplabv3plus_r101.plan.json
+    plan_sha256: 92f1a806ac60819ee5a19b2f117ecd40bcf022a71a69901e9e499bb9f1b69a5e
+    weights: models/deeplabv3plus-r101/deeplabv3plus_r101.weights.f32
+    weights_sha256: 73b0a600ee879a4dc1919b967b5dd6903dc2933b79032aeb1b4c722fdbf6286a
+    input_bytes: 25165824
+    # label map 2048x1024 uint8, then the four u64 frequency-probe words at an 8-byte aligned offset
+    output_bytes: 2097184
+    task_output_bytes: 2097152
+    timing_offset: 2097152

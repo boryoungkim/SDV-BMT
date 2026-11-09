@@ -1,0 +1,62 @@
+# v0.1.2 DeepLab part (ACTUAL): GPU 0 executing the DeepLabV3+ ResNet-18 cuDNN plan with a pinned algorithm table
+# (cuDNN 9.1.0). The runner fails DUT.prepare if cuDNN rejects a pinned entry, and records the heuristic's own choice next
+# to it. Prepared inputs in pinned host memory (per-request H2D inside DUT-service), CUDA-event segment timing, frequency
+# probe (20000 SM cycles) first in each request. Same runtime options as the YOLOX pinned configurations.
+# Math type 0 = CUDNN_DEFAULT_MATH (cuDNN 9.1.0 documentation: TF32 Tensor Core operation is permitted on Ampere and later;
+# the table records the math type provided, not which kernels ran).
+schema_version: 1
+dut_config_id: nvidia-rtx-pro-6000-gpu0-cudnn-deeplabv3plus-r18
+adapter: nvidia_cuda
+device: GPU-f3e03bfa-61ab-acdf-0834-450de8becefc
+max_inflight: 1
+runtime_options:
+  residency: host_pinned
+  instrumentation: cuda_events
+  context_sched: blocking_sync
+  cudnn:
+    math_type: default
+    algo_policy: pinned
+    workspace_limit_bytes: 268435456
+    # (algorithm, math type) per convolution in plan order, cuDNN 9.1.0 enum values: 1 = IMPLICIT_PRECOMP_GEMM;
+    # math type [0]. Obtained from the heuristic policy (cudnnGetConvolutionForwardAlgorithm_v7, first supported
+    # deterministic result within the workspace limit) on this device and library by tools/deeplab_family/pin_table.py
+    # (raw_dump prepare of the canonical plan); table SHA-256 a8df9751544f9406eb16577d7ee4e86c2adea5e93fd26ba0ec766c47c0148e02.
+    algorithms:
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+      - [1, 0]
+  frequency_probe_cycles: 20000

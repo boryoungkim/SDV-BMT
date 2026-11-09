@@ -312,3 +312,23 @@ v0.1.2: `tools/yolox_family/make_experiments.py --rate-hz R`(stdlib)가 YOLOX �
 - 의존 방향은 그대로다: metrics는 runner·dut·input·workload를 import하지 않는다(evaluator는 dataset index를 열지 않는다). runner는 input을 import하지 않고 composition root가 넘긴 annotation source를 쓴다.
 - 새 Python dependency 없음(pycocotools는 runtime dependency가 아니다). 새 subpackage 없음.
 - 5개 결과 계층과 guard 결과는 `docs/metrics_catalog.md` 8절.
+
+## 13. v0.1.2 — DeepLabV3+ segmentation path and start-up checks
+
+| 위치 | 역할 |
+|---|---|
+| `src/sdv_bmt/workload/deeplab.py` | `deeplabv3plus_cityscapes` workload: 입력 약속 `cityscapes-rgb-norm-chw2048x1024-f32/1`(PPM RGB → float32 정규화, CHW), postprocess `labelmap-u8-check/1`, codec `labelmap-u8-rowrle/1` |
+| `src/sdv_bmt/contracts/labelmap.py`, `native/src/common/labelmap_output.hpp` | label map codec과 그 native twin(byte 동일, test로 확인). workload(부호화)와 평가기(복호화)가 같이 쓰므로 `contracts`에 둔다 |
+| `native/src/nvidia/cudnn_plan.hpp` | 새 step: conv의 "bias(+residual) 뒤 ReLU" 마무리(act 3, `res_before_act`), `gap`, `broadcast`, `resize_bilinear`(align_corners=False, PyTorch 산술), `argmax_u8`. 새 kernel은 두 번째 NVRTC 원문에 있고 plan이 쓸 때만 compile되므로, 기존 plan의 glue 원문·cubin과 prepare 기록은 바뀌지 않는다. 모르는 활성화 번호는 거절한다 |
+| `tools/deeplab_family/` (code identity 밖) | dataset 구축, 재정의 model과 ONNX export, 변환기(canonical + 수치 검증용 진단 plan), algorithm 표 고정, experiment 생성, 수치 관문, 공식 구현·평가 교차 확인 |
+
+시작 전 거절 검사(측정 경로·metric 공식·bundle 형식은 그대로):
+
+| 검사 | 위치 |
+|---|---|
+| `timing_offset`은 8의 배수 | `src/sdv_bmt/dut/nvidia/adapter.py` |
+| 고정 속도 + `frame_period`이면 `period_ns == floor(1e9 / rate_hz)` | `src/sdv_bmt/runner/plan.py` |
+| 실행 계획의 모든 읽기·쓰기가 버퍼 안에 있고(출력은 task 출력 크기 안), task 출력 전체를 쓴다 | `native/src/nvidia/cudnn_plan.hpp` (준비 단계에서 한 번) |
+| native 실행 파일의 build stamp(`<실행 파일>.source-tree.sha256`, `make -C native`가 기록)가 현재 native 소스 지문과 같다 | `src/sdv_bmt/dut/native_source.py`, `native/Makefile` |
+| 입력 설정의 `preprocessing_contract`가 workload 입력 약속과 같다 | `src/sdv_bmt/runner/runner.py` |
+

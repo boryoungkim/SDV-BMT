@@ -31,6 +31,7 @@ from ..contracts.ids import canonical_json_bytes, digest_of, sha256_hex
 from ..contracts.protocols import LifecycleError
 from ..contracts.records import ErrorInfo, InputItem, PreparedInfo, RealtimeRunContext, WindowHandover, WindowResult
 from ..contracts.specs import DUTConfig, WorkloadSpec, workload_identity_digest
+from . import native_source as _native_source
 
 NATIVE_SPEC_SCHEMA = "sdv-bmt-native-run/1"
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -47,19 +48,23 @@ def native_binary(name: str) -> Path:
 
 
 def native_source_tree_sha256() -> str:
-    """SHA-256 over the native sources (``native/src``, ``native/Makefile``) by relative path."""
-    files = sorted(p for p in NATIVE_DIR.rglob("*") if p.is_file() and "build" not in p.relative_to(NATIVE_DIR).parts
-                   and p.suffix in (".hpp", ".cpp", ""))
-    listing = [{"path": str(p.relative_to(NATIVE_DIR)), "sha256": sha256_hex(p.read_bytes())} for p in files]
-    return digest_of(listing)
+    """SHA-256 over the native sources (``native/src``, ``native/tests``, ``native/Makefile``) by relative path."""
+    return _native_source.native_source_tree_sha256(NATIVE_DIR)
 
 
 def native_identity(binary: Path) -> dict[str, Any]:
-    """Identity of the native measurement plane: executable and source tree digests."""
+    """Identity of the native measurement plane: executable and source tree digests.
+
+    The executable must carry the build stamp of the current native sources (``make -C native`` writes it);
+    an executable built from other sources, or without a stamp, is refused before anything runs."""
     if not binary.is_file():
         raise NativeRunnerError(f"native runner {binary} is not built (run: make -C native)")
+    try:
+        tree = _native_source.check_stamp(binary, NATIVE_DIR)
+    except ValueError as exc:
+        raise NativeRunnerError(str(exc)) from None
     return {"native.runner": binary.name, "native.runner_sha256": sha256_hex(binary.read_bytes()),
-            "native.source_tree_sha256": native_source_tree_sha256()}
+            "native.source_tree_sha256": tree}
 
 
 def describe_native(binary: Path, args: dict[str, Any], timeout_s: float = 60.0) -> dict[str, Any]:

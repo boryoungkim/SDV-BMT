@@ -27,15 +27,19 @@ from fractions import Fraction
 from typing import Any, Optional
 
 from ..contracts.ids import sha256_hex
-from ..contracts.records import METRIC_CATALOG_VERSION, MetricSetResult
+from ..contracts.quality import CITYSCAPES_SEMSEG_MIOU_V1
+from ..contracts.records import METRIC_CATALOG_VERSION, METRIC_CATALOG_VERSION_V1, MetricSetResult
 from ..contracts.status import MetricLayer, MetricStatus, ReplayMode, RequestState
 from ..observation.reader import RunBundle, read_output_blob
 from .catalog import P99_MIN_SAMPLES, PERCENTILE_METHOD, PERCENTILES
 from .identity import output_identity
 from .portable import INF, Computed, maximum, per_second, percentile, planned_percentile, rate, ratio
 from .quality_detection import DetectionQuality, detection_quality
+from .quality_segmentation import SegmentationQuality, segmentation_quality
 
-CATALOG_VERSION = METRIC_CATALOG_VERSION
+# Metric Set v1 (frozen) and v1.1 (v0.1.2: v1 unchanged + the two segmentation quality metrics, approved 2026-11-06)
+CATALOG_VERSION = METRIC_CATALOG_VERSION  # v1.1, the default catalog of new evaluations
+CATALOG_VERSION_V1 = METRIC_CATALOG_VERSION_V1
 S = RequestState
 L = MetricLayer
 
@@ -210,9 +214,21 @@ def _defs() -> list[MetricSpec]:
     return out
 
 
-METRICS: tuple[MetricSpec, ...] = tuple(_defs())
-BY_ID = {m.metric_id: m for m in METRICS}
-assert len(BY_ID) == len(METRICS)
+METRICS: tuple[MetricSpec, ...] = tuple(_defs())  # Metric Set v1 (frozen: 91 metrics)
+SEGMENTATION_METRICS: tuple[MetricSpec, ...] = (
+    MetricSpec("quality.segmentation.coverage", L.TASK_QUALITY, "ratio",
+               "segmentation-evaluated planned items / planned requests (items of COMPLETED requests with a valid "
+               "task output and a frozen ground truth)"),
+    MetricSpec("quality.segmentation.conditional.miou", L.TASK_QUALITY, "ratio",
+               "Cityscapes 19-class mean IoU: per class TP / (TP + FP + FN) with counts summed over the evaluated "
+               "items, ground-truth pixels 255 not counted, mean over the classes with a non-empty union; "
+               "conditional population (items of COMPLETED requests with a valid task output); ground truth frozen "
+               "in the bundle"),
+)
+METRICS_V1_1: tuple[MetricSpec, ...] = METRICS + SEGMENTATION_METRICS
+CATALOG_METRICS = {CATALOG_VERSION_V1: METRICS, CATALOG_VERSION: METRICS_V1_1}
+BY_ID = {m.metric_id: m for m in METRICS_V1_1}
+assert len(BY_ID) == len(METRICS_V1_1)
 
 
 def _requests_population(name: str, sample: int, counts: dict[str, int]) -> dict[str, Any]:
@@ -223,9 +239,10 @@ def _requests_population(name: str, sample: int, counts: dict[str, int]) -> dict
 
 def compute_metric_set_v1(bundle: RunBundle, folded: dict, counts: dict[str, int], window: Any,
                           params: dict[str, Any], eval_id: str, kind: Any, boundary_id: str,
-                          clock_notes: dict[str, str]) -> list[MetricSetResult]:
-    """All Metric Set v1 results of a bundle whose measurement is valid (run-level gates are applied by
-    the evaluator before this is called)."""
+                          clock_notes: dict[str, str], catalog: str = CATALOG_VERSION_V1) -> list[MetricSetResult]:
+    """All Metric Set v1 (or v1.1) results of a bundle whose measurement is valid (run-level gates are applied by
+    the evaluator before this is called).  ``catalog`` v1 computes exactly the frozen v1 results; v1.1 adds the
+    segmentation quality metrics, and a segmentation evaluator makes the detection quality metrics not_applicable."""
     planned = counts["planned"]
     entries = list(folded.values())
     t_sched = [r.t_sched for r, _ in entries]
@@ -401,13 +418,42 @@ def compute_metric_set_v1(bundle: RunBundle, folded: dict, counts: dict[str, int
                                  "not evidence of task correctness",))
 
     # ---- task quality (bundle-only, conditional population)
-    quality = detection_quality(bundle, folded, params["quality"])
+    protocol = params["quality"]
+    segmentation = (catalog == CATALOG_VERSION and protocol is not None
+                    and protocol.get("evaluator") == CITYSCAPES_SEMSEG_MIOU_V1)
+    seg = segmentation_quality(bundle, folded, protocol) if catalog == CATALOG_VERSION else None
+    if segmentation:
+        assert seg is not None
+        quality = DetectionQuality(MetricStatus.NOT_APPLICABLE, f"quality_evaluator_is:{CITYSCAPES_SEMSEG_MIOU_V1}",
+                                   annotation_check=seg.annotation_check)
+    else:
+        quality = detection_quality(bundle, folded, protocol)
     _emit_quality(emit, quality, counts)
 
     # ---- validity / evidence: data integrity and traceability
     _emit_data(emit, bundle, folded, counts, quality)
-    assert [m.metric_id for m in out] == [m.metric_id for m in METRICS]
+    if seg is not None:  # v1.1: no evaluator -> not_collected; another evaluator -> not_applicable
+        _emit_segmentation(emit, seg, counts)
+    assert [m.metric_id for m in out] == [m.metric_id for m in CATALOG_METRICS[catalog]]
     return out
+
+
+def _emit_segmentation(emit: Any, seg: SegmentationQuality, counts: dict[str, int]) -> None:
+    planned = counts["planned"]
+    base = {"name": "quality_evaluated_items", "sample_count": seg.evaluated_items, "planned_count": planned,
+            "completed_count": counts["completed"],
+            "coverage": ratio(seg.evaluated_items, planned) if planned else None, **seg.population}
+    inputs = ("events.jsonl", "outputs.bin", "input_items.jsonl", "quality_reference.jsonl", "manifest.json")
+    if seg.status in (MetricStatus.VALID, MetricStatus.EMPTY):
+        cov = rate(seg.evaluated_items, planned)
+    else:
+        cov = Computed(seg.status, None, 0, seg.reason)
+    emit("quality.segmentation.coverage", cov, base, inputs=inputs, notes=seg.notes)
+    if seg.status is MetricStatus.VALID:
+        miou = Computed(MetricStatus.VALID, seg.miou, seg.evaluated_items)
+    else:
+        miou = Computed(seg.status, None, seg.evaluated_items, seg.reason)
+    emit("quality.segmentation.conditional.miou", miou, base, inputs=inputs, notes=seg.notes)
 
 
 def _required_rate_met(mode: str, required: float, offered: Computed, achieved: Computed, planned: int,

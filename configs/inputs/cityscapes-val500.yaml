@@ -1,0 +1,21 @@
+# v0.1.2 DeepLab input: the 500 Cityscapes val images (fine annotations), built by
+# tools/deeplab_family/build_cityscapes_val.py from the official leftImg8bit_trainvaltest.zip and gtFine_trainvaltest.zip
+# (downloaded by the user under the Cityscapes terms; the dataset stays private and is not redistributed).
+# Payloads are the decoded RGB pixels (PPM, decoded once offline by Pillow); the fine ground truth, mapped to the 19 train
+# ids (255 = not evaluated), is inline in the index (labelmap-u8-rowrle/1, base64).
+schema_version: 1
+input_kind: dataset
+input_id: cityscapes-val500
+version: "1"
+family:
+  source_dataset: cityscapes-val-gtfine
+  source_version: "1"
+  task: cityscapes-semantic-segmentation-19class
+  annotation_schema: cityscapes-gtfine-trainid-labelmap/1
+  preprocessing_contract: cityscapes-rgb-norm-chw2048x1024-f32/1
+source:
+  index: ../../datasets/cityscapes-val500/index.jsonl
+  index_sha256: 53cee9605a268b4e17fc79f97ef6111550673169826278b64b49b76afa5abc3a
+selection:
+  start: 0
+  count: 500

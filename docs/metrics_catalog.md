@@ -1,6 +1,8 @@
 # Metric Catalogs — Model-level Metric Set v1 (기본) + Stage 1A legacy catalog
 
-> **기본 catalog는 `sdv-bmt-model-metric-set-v1`(8절)이다**(2026-10-08 승인 "SDV-BMT Model-level Metric Set v1"). 1–7절은 legacy catalog `bmt-portable-v1-stage1a`의 정의이며 그대로 동결되어 있다: `sdv-bmt evaluate --catalog bmt-portable-v1-stage1a`가 이전 평가(G-1..G-5 golden snapshot, Stage 1R-G/2b-G 평가)를 byte 단위로 재현한다.
+> **v0.1.2부터 기본 catalog는 `sdv-bmt-model-metric-set-v1.1`(9절)이다**: Metric Set v1(8절)의 91개 metric을 정의·순서·계산 그대로 두고 segmentation 품질 metric 2개만 더했다. `--catalog sdv-bmt-model-metric-set-v1`은 동결된 v1으로 이전 평가를 byte 단위로 재현한다.
+>
+> Metric Set v1: 2026-10-08 승인 "SDV-BMT Model-level Metric Set v1". 1–7절은 legacy catalog `bmt-portable-v1-stage1a`의 정의이며 그대로 동결되어 있다: `sdv-bmt evaluate --catalog bmt-portable-v1-stage1a`가 이전 평가(G-1..G-5 golden snapshot, Stage 1R-G/2b-G 평가)를 byte 단위로 재현한다.
 
 # Stage 1A Portable Metric Catalog (`bmt-portable-v1-stage1a`, legacy)
 
@@ -242,3 +244,20 @@ Metric Set v1 평가의 `metrics.json`에는 `evidence_checks` 목록이 있다.
 | check | status | 의미 |
 |---|---|---|
 | `completed_beyond_request_timeout` | `pass` / `flagged` / `not_applicable`(planned request 없음) / `not_evaluated`(event 순서 불법) | COMPLETED인데 `t_complete − t_submit_begin > request_timeout_ns`인 request의 수와 id(앞 50개). Stage 1A timeout 의미로는 TIMED_OUT + late completion이어야 한다. v0.1.0 native loop(의미상 시각 순서, `docs/measurement_protocol.md` 10.2절)는 이런 기록을 만들지 않으며, 이전 bundle에서 나타날 수 있다 |
+
+## 9. Model-level Metric Set v1.1 (`sdv-bmt-model-metric-set-v1.1`, v0.1.2)
+
+승인 근거: 2026-11-06 프로젝트 결정(DeepLabV3+ 계획 v03의 품질 결정). 구현: `src/sdv_bmt/metrics/metric_set_v1.py`(`CATALOG_METRICS`), `quality_segmentation.py`(bundle 기반 segmentation 품질), `src/sdv_bmt/contracts/quality.py`(평가기 선언 `cityscapes-semseg-miou/1`), `src/sdv_bmt/contracts/labelmap.py`(label map codec).
+
+- v1의 91개 metric은 그대로다(같은 정의·순서·계산). detection 평가기를 선언한 bundle에서는 v1과 같은 값이 나오고, 아래 두 metric은 `not_applicable`이다. 평가기를 선언하지 않은 bundle에서는 detection 품질 metric과 같이 `not_collected`이다.
+- segmentation 평가기(`cityscapes-semseg-miou/1`)를 선언한 bundle에서는 `quality.detection.*`가 `not_applicable`이고 아래 두 metric이 계산된다.
+
+| metric | 계층 | 단위 | 정의 |
+|---|---|---|---|
+| `quality.segmentation.coverage` | task quality | ratio | segmentation 평가된 planned item / planned request (완료되고 유효한 task output과 frozen ground truth가 있는 item) |
+| `quality.segmentation.conditional.miou` | task quality | ratio | Cityscapes 19 class mean IoU. class마다 TP / (TP + FP + FN), count는 평가된 모든 item의 합, ground truth 255(평가 제외) 화소는 세지 않는다, 합집합이 0인 class는 평균에서 뺀다(뺀 class는 notes에). conditional population |
+
+- ground truth: `cityscapes-gtfine-trainid-labelmap/1` annotation(`labelmap-u8-rowrle/1`, base64)이 bundle의 `quality_reference.jsonl`에 동결된다. 예측: completed request의 `labelmap-u8-rowrle/1` task output. 둘 다 digest를 재검증하고, 출력 머리의 item 번호와 크기가 item의 ground truth와 맞아야 한다.
+- 정의는 cityscapesScripts `evalPixelLevelSemanticLabeling`의 class IoU·`averageScoreClasses`와 같다(v0.1.2 교차 확인).
+- detection operating point override는 segmentation 평가기에 적용되지 않는다(주면 평가 오류).
+

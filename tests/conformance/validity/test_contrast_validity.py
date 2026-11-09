@@ -271,6 +271,9 @@ def test_fi5_all_forbidden_differences_are_reported(tmp_path):
             "run": parse_strict(RunConfig, {"max_inflight": 1, "queue_capacity": 0, "on_full": "drop_new",
                                             "request_timeout_ns": 500_000_000, "drain_ns": 1_000_000_000}),
             "stress": dataclasses.replace(base.plan.stress, level="L1"),
+            # the frame-period deadline follows the replay rate (plan validation requires it)
+            "evaluation": dataclasses.replace(base.plan.evaluation, deadline=dataclasses.replace(
+                base.plan.evaluation.deadline, period_ns=100_000_000)),
         },
     )
     result = evaluate_contrast_validity(_manifest(base, tmp_path, "a"), _manifest(changed, tmp_path, "b"), "stress")

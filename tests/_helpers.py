@@ -23,7 +23,7 @@ def dataset_spec_dict(**overrides) -> dict:
             "source_version": "1",
             "task": "fake-identity",
             "annotation_schema": "fake-label-v1",
-            "preprocessing_contract": "fake-bytes-v1",
+            "preprocessing_contract": "fake-identity-input/1",
         },
         "source": {"index": "fixtures/ds.index.jsonl", "index_sha256": ZERO_SHA},
         "selection": {"start": 0, "count": 4},
@@ -43,7 +43,7 @@ def scenario_spec_dict(**overrides) -> dict:
             "source_version": "1",
             "task": "fake-identity",
             "annotation_schema": None,
-            "preprocessing_contract": "fake-bytes-v1",
+            "preprocessing_contract": "fake-identity-input/1",
             "streams": ["cam_front"],
             "timing": {
                 "source_field": "t_capture_us",
@@ -301,6 +301,7 @@ MS = 1_000_000
 
 LEGACY_CATALOG = "bmt-portable-v1-stage1a"
 METRIC_SET_V1 = "sdv-bmt-model-metric-set-v1"
+METRIC_SET_V1_1 = "sdv-bmt-model-metric-set-v1.1"  # v0.1.2 default catalog (v1 + segmentation quality)
 
 
 def evaluate(run_dir: Path, eval_id: str = "eval-test-0", override=None, catalog: str = LEGACY_CATALOG):

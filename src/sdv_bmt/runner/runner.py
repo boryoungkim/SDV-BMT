@@ -404,6 +404,11 @@ class BenchmarkRunner:
                 raise TypeError("Workload.input_contract() must return a WorkloadInputContract")
         except Exception as exc:
             raise PlanRejected([f"workload: input contract unavailable: {exc}"]) from None
+        declared_contract = rp.input_spec.family.preprocessing_contract
+        workload_contract = f"{contract.contract_id}/{contract.contract_version}"
+        if declared_contract != workload_contract:  # v0.1.2 safeguard: a wrong pairing would only mis-record identity
+            raise PlanRejected([f"input.family.preprocessing_contract: the input declares {declared_contract!r}, the "
+                                f"workload's input contract is {workload_contract!r}"])
         pipeline, override, override_desc = self._resolve_input_pipeline(components, contract)
         quality_reference = self._quality_reference(components, items)
         declaration = output_pipeline = None

@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from .specs import DetectionOperatingPoint
 
 COCO_DETECTION_BBOX_V1 = "coco-detection-bbox/1"
+CITYSCAPES_SEMSEG_MIOU_V1 = "cityscapes-semseg-miou/1"  # v0.1.2 (Metric Set v1.1)
 
 # Category ids of the COCO 2017 instances annotations (pycocotools ``getCatIds()`` of
 # instances_val2017.json, ascending): the category set the COCO evaluation runs over.
@@ -43,4 +44,14 @@ QUALITY_EVALUATORS: dict[str, QualityEvaluatorDeclaration] = {
         annotation_schema="coco-2017-instances-bbox/1",
         output_schemas=("sdv-yolox-coco-detections/1",),
     ),
+    CITYSCAPES_SEMSEG_MIOU_V1: QualityEvaluatorDeclaration(
+        evaluator_id=CITYSCAPES_SEMSEG_MIOU_V1,
+        task="cityscapes-semantic-segmentation-19class",
+        annotation_schema="cityscapes-gtfine-trainid-labelmap/1",
+        output_schemas=("labelmap-u8-rowrle/1",),
+    ),
 }
+
+# Cityscapes evaluation: the 19 trainId classes (0..18); every other ground-truth pixel is 255 (ignored).
+CITYSCAPES_NUM_CLASSES = 19
+CITYSCAPES_IGNORE_LABEL = 255

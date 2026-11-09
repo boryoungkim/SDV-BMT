@@ -5,6 +5,8 @@
 //   reference_convnet_v1   reference conformance workload (reference_output.hpp)
 //   yolox_coco_v1          YOLOX COCO detection workload, Stage 2b-G real-model baseline (yolox_output.hpp);
 //                          needs a per-item output context (image id and original size) from the stage command
+//   labelmap_rowrle_v1     DeepLabV3+ Cityscapes segmentation workload, v0.1.2 (labelmap_output.hpp): uint8 label
+//                          map check + labelmap-u8-rowrle/1 codec; no per-item context
 #pragma once
 
 #include <cstdint>
@@ -13,6 +15,7 @@
 #include <string_view>
 
 #include "json.hpp"
+#include "labelmap_output.hpp"
 #include "loop.hpp"
 #include "reference_output.hpp"
 #include "yolox_output.hpp"
@@ -26,6 +29,8 @@ class OutputPipeline {
             reference_.emplace(spec.at("task").as_string());
         } else if (kind_ == "yolox_coco_v1") {
             yolox_.emplace(spec);
+        } else if (kind_ == "labelmap_rowrle_v1") {
+            labelmap_.emplace(spec);
         } else {
             throw JsonError("unsupported output pipeline " + kind_);
         }
@@ -40,11 +45,15 @@ class OutputPipeline {
     }
 
     // Upper bound of one encoded task output, used to reserve the output buffers before MEASURE.
-    size_t max_blob_bytes() const { return yolox_ ? YoloxCocoOutput::kMaxBlobBytes : size_t(512); }
+    size_t max_blob_bytes() const {
+        if (labelmap_) return labelmap_->max_blob_bytes();
+        return yolox_ ? YoloxCocoOutput::kMaxBlobBytes : size_t(512);
+    }
 
     bool encode(int64_t request_id, int64_t item_index, std::string_view raw, std::string& blob, std::string& phase,
                 ErrorInfo& err) const {
         if (yolox_) return yolox_->encode(request_id, item_index, raw, blob, phase, err);
+        if (labelmap_) return labelmap_->encode(request_id, item_index, raw, blob, phase, err);
         return reference_->encode(request_id, item_index, raw, blob, phase, err);
     }
 
@@ -52,6 +61,7 @@ class OutputPipeline {
     std::string kind_;
     std::optional<ReferenceConvNetOutput> reference_;
     std::optional<YoloxCocoOutput> yolox_;
+    std::optional<LabelmapRleOutput> labelmap_;
 };
 
 }  // namespace sdv

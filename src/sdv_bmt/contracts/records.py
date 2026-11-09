@@ -57,7 +57,10 @@ CONTRAST_VALIDITY_SCHEMA_VERSION = 1
 # identity: "metric/evaluator definition").  New runs record Model-level Metric
 # Set v1; earlier bundles keep the Stage 1A portable catalog they recorded, which
 # the evaluator still provides, frozen, for reproduction.
-METRIC_CATALOG_VERSION = "sdv-bmt-model-metric-set-v1"
+# v0.1.2: new runs record Metric Set v1.1 (v1 + the two segmentation quality metrics, approved 2026-11-06); the
+# Metric Set v1 catalog stays selectable, frozen, and reproduces earlier evaluations byte for byte.
+METRIC_CATALOG_VERSION = "sdv-bmt-model-metric-set-v1.1"
+METRIC_CATALOG_VERSION_V1 = "sdv-bmt-model-metric-set-v1"
 LEGACY_METRIC_CATALOG_VERSION = "bmt-portable-v1-stage1a"
 
 # Raw evidence files of a run bundle. Their SHA-256 digests are recorded in

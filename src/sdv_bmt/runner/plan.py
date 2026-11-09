@@ -8,8 +8,10 @@ never converts scalars to dates.
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
+from fractions import Fraction
 from pathlib import Path
 from typing import Any, Optional
 
@@ -31,6 +33,7 @@ from ..contracts.specs import (
 )
 from ..contracts.status import (
     NOMINAL_LEVEL,
+    DeadlinePolicy,
     ExecutionKind,
     InputKind,
     ReferenceKind,
@@ -287,6 +290,12 @@ def load_evaluation_override(path: Path | str) -> EvaluationOverride:
 # --------------------------------------------------------------------------
 
 
+def frame_period_ns(rate_hz: float) -> int:
+    """The frame period of a fixed replay rate: floor(1e9 / rate_hz), with the rate taken exactly as written
+    (its shortest decimal representation), the same arithmetic as the experiment generators."""
+    return math.floor(Fraction(1_000_000_000) / Fraction(repr(float(rate_hz))))
+
+
 def validate_plan(rp: ResolvedPlan) -> list[str]:
     """Static Stage 1A plan rules. Returns a list of issues (empty = valid)."""
     plan = rp.plan
@@ -296,6 +305,13 @@ def validate_plan(rp: ResolvedPlan) -> list[str]:
                       "the Stage 1A virtual runner supports mock execution only")
     if rp.input_spec.input_kind is InputKind.DATASET and plan.replay.mode is ReplayMode.RECORDED:
         issues.append("replay.mode: recorded replay is not allowed for dataset input")
+    deadline = plan.evaluation.deadline
+    if (plan.replay.mode is ReplayMode.FIXED_RATE and deadline is not None
+            and deadline.policy is DeadlinePolicy.FRAME_PERIOD):
+        period = frame_period_ns(plan.replay.rate_hz)
+        if deadline.period_ns != period:
+            issues.append(f"evaluation.deadline: policy frame_period with replay.rate_hz {plan.replay.rate_hz:g} "
+                          f"requires period_ns {period} (floor(1e9 / rate_hz)), not {deadline.period_ns}")
     if plan.run.max_inflight != 1:
         issues.append("run.max_inflight: Stage 1A supports max_inflight=1 only")
     if plan.run.queue_capacity != 0:

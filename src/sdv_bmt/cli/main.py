@@ -45,11 +45,13 @@ from ..stress.fake import FakeStressProvider
 from ..stress.none import NoStressProvider
 from ..workload.fake import FakeIdentityWorkload
 from ..workload.reference import ReferenceConvNetWorkload
+from ..workload.deeplab import DeepLabCityscapesWorkload
 from ..workload.yolox import YoloxCocoWorkload
 
 WORKLOADS = {FakeIdentityWorkload.IMPLEMENTATION: FakeIdentityWorkload,
              ReferenceConvNetWorkload.IMPLEMENTATION: ReferenceConvNetWorkload,
-             YoloxCocoWorkload.IMPLEMENTATION: YoloxCocoWorkload}
+             YoloxCocoWorkload.IMPLEMENTATION: YoloxCocoWorkload,
+             DeepLabCityscapesWorkload.IMPLEMENTATION: DeepLabCityscapesWorkload}
 DUT_ADAPTERS = {FakeBlockingDUT.ADAPTER: FakeBlockingDUT, FakeNativeDUT.ADAPTER: FakeNativeDUT,
                 NvidiaCudaDUT.ADAPTER: NvidiaCudaDUT}
 STRESS_KINDS = {FakeStressProvider.KIND: FakeStressProvider}

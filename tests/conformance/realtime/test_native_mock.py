@@ -179,6 +179,9 @@ def test_an_unresponsive_native_runner_is_killed_and_the_run_fails_closed(tmp_pa
     script = fake_dir / "sdv-bmt-native-fake"
     script.write_text("#!/bin/sh\nexec sleep 30\n")
     script.chmod(script.stat().st_mode | stat.S_IEXEC)
+    from sdv_bmt.dut.native import native_source_tree_sha256
+    # a valid build stamp, so the run reaches the native start (the stamp check itself is tested separately)
+    (fake_dir / "sdv-bmt-native-fake.source-tree.sha256").write_text(native_source_tree_sha256() + "\n")
     monkeypatch.setenv("SDV_BMT_NATIVE_DIR", str(fake_dir))
     from sdv_bmt.dut.fake import FakeNativeDUT
     monkeypatch.setattr(FakeNativeDUT, "START_TIMEOUT_S", 1.0)
