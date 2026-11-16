@@ -1,0 +1,70 @@
+{
+  "status": "R18_SINGLE_IMAGE_ACTUAL_INTEGRATION_PASSED_BENCHMARK_NOT_QUALIFIED",
+  "original_preserved": "/home/bmt/caontd/SDV-BMT",
+  "working_copy": "/home/bmt/caontd/SDV-BMT-eagle-n",
+  "baseline": "v0.1.2 f3c8da07b2d2e1324fef2644b0ffde2dc75230da",
+  "branch": "cao/eagle-n-deeplab",
+  "scope": "isolated source integration plus user-requested ACTUAL single-image R18 direct trial; standard qualification unchanged",
+  "implemented": [
+    "strict Python NativeRealtimeAdapter",
+    "native C++ backend with SHA/slot/staging/range guards",
+    "BOS C++ executor (37/70 Conv plan, trace replay, unqualified)",
+    "H04-pinned offline exporter and private assets",
+    "DUT/workload/capture configs; baseline templates await L4",
+    "read-only pinned BOS container build/launch tools",
+    "source diff/original-file audit"
+  ],
+  "validation": {
+    "baseline_native": "43702 checks, 0 failures",
+    "baseline_python": "606 passed, 49 skipped",
+    "regression_python": "627 passed, 52 skipped",
+    "latest_targeted": "22 passed",
+    "sdk_metadata_test": "1 passed inside BOS image, no device exposed",
+    "mock_bundle": "2 completed, 0 dropped/error/timeout; run+evaluate passed, explicitly MOCK",
+    "canonical_input": "25165824 raw bytes equal to both standalone golden inputs",
+    "sdk_metadata_evidence": "/home/bmt/caontd/eagle_n_integration_evidence/describe_20261112T072815_331526Z",
+    "targeted_evidence": "/home/bmt/caontd/eagle_n_integration_review/final_targeted_tests.log",
+    "sdk_executor_sha256": "755355f4bf386220ae8b0b3f7872de6853a36291105bcd3c9ce577b257f48ba7",
+    "latest_adapter_and_contract_tests": "22 adapter tests + 4 native contract tests passed",
+    "native_actual_trial": {
+      "completed": 1,
+      "error": 0,
+      "timed_out": 0,
+      "agreement_previous_npu": 1.0,
+      "agreement_ort_fp32": 0.9987001419067383,
+      "offline_evaluate": "passed"
+    }
+  },
+  "npu_inference_in_this_task": true,
+  "native_r18_full_correctness": "FULL_GRAPH_ONE_IMAGE_PASSED_100_PERCENT_PREVIOUS_NPU_MATCH",
+  "native_r50_full_correctness": "NOT_RUN",
+  "g14_g15": "NOT_COMPLETE",
+  "sdk_link": "build_Release_distributed, pinned to same binary tree as standalone; installed copies differ and are not selected",
+  "pending": [
+    "multi-input/dataset/trace numerical qualification; R18 single-image direct full graph now passed",
+    "prove hot-path resource/allocation/trace fit and buffer lifetime",
+    "supply canonical Cityscapes val500 under pinned index digest",
+    "resolve 500-item staging residency/memory budget",
+    "capture/evaluate, NPU golden, 5 baselines",
+    "maintainer review of experimental shared glue and Plan C/precision/Cast boundary",
+    "R101: rebuild native executor, run bounded operator/module/stage/full correctness gates, then produce hash-bound native qualification and NPU golden",
+    "Run R101 adapter/config contract tests after the next requested verification window"
+  ],
+  "evidence": "/home/bmt/caontd/eagle_n_integration_review",
+  "native_build_and_launch_evidence": "/home/bmt/caontd/eagle_n_integration_evidence",
+  "latest_native_trial": "/home/bmt/caontd/eagle_n_integration_evidence/run_20261112T081434_426852Z",
+  "native_r18_trial_report": "/home/bmt/caontd/eagle_n_integration_evidence/run_20261112T081434_426852Z/verification/R18_TRIAL_RESULT.json",
+  "r101_integration": {
+    "status": "OFFLINE_PLAN_AND_CONFIG_WIRED_NATIVE_NPU_NOT_QUALIFIED",
+    "artifact_sha256": "86d0f08c1852723892777c0216936e5b790d3b9345f0e83473fb21309c129745",
+    "logical_convs": 121,
+    "plan": "/home/bmt/caontd/eagle_n_integration_assets/r101/r101.plan.json",
+    "weights": "/home/bmt/caontd/eagle_n_integration_assets/r101/r101.weights.f32",
+    "precision": "bf16-conv-fp32dst",
+    "offline_export": "EXPORTED_NOT_QUALIFIED",
+    "native_build_after_change": "NOT_DONE",
+    "native_npu_execution": "NOT_RUN",
+    "qualification_receipt": "ABSENT",
+    "baseline": "TEMPLATE_ONLY_YAML_IN"
+  }
+}

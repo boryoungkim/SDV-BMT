@@ -1,0 +1,40 @@
+EAGLE-N MEASUREMENT DECLARATION — DRAFT H10, R18 SINGLE-IMAGE TRIAL PASSED; R-101 CONFIG WIRED, NOT QUALIFIED
+Nguồn: common guide §3.1/3.2, §6.2/6.3/6.4, §7.1, §8; device guide §5.1/5.4/5.6.
+
+Item                Implementation / scope                                     Evidence state
+Preprocess          SDV-BMT canonical RGB→CHW FP32; không đổi                  Byte-identical trên ảnh cũ
+Input conversion    native Executor::stage: NHWC + storage dtype                 R18 single-image ACTUAL trial passed; not broadly qualified
+Residency           prepared host tensor per item, explicit staged budget       Self-declared, not independent
+H2D                 write_tensor(staged,input) trong synchronous submit           Code; DUT-service included
+Execution           C++ TTNN direct graph for unqualified R18 trial; no Python forward  1 actual NPU image passed; 100% match to prior standalone NPU
+Completion          synchronous run + final readback; poll→1                     1 completed, 0 error/timeout; not steady-state timing
+D2H                 native memcpy vào uint32 host buffer cấp phát trước          Code; DUT-service included
+Output conversion   collect check0..18 TRƯỚC cast uint32→uint8                    Contract tests PASS (MOCK)
+Postprocess/codec   Shared labelmap check + row-RLE                               Native/Python twin unchanged
+Timing              Common loop CLOCK_MONOTONIC timestamps                       No vendor clock substituted
+Device segments     None                                                         NOT_OBSERVABLE
+Precision R18       BF16 activations/Conv weights, HiFi4/FP32Dst Conv             Actual single-image trial passed; matches standalone NPU
+Precision R50       FP32 Conv storage; BF16 adapters Pool/Resize                  Target config; native NPU NOT RUN
+Precision R101      BF16 activations/Conv weights, HiFi4/FP32Dst Conv             Offline plan/config only; native C++/NPU NOT RUN
+CPU model fallback  None by native plan/code; shape folding/weight prepare offline Needs numeric/placement gate
+Device selection    Explicit device_id0, exclusive plugin lock                   Competing users not inferred
+Profiler            OFF                                                          No Tracy-instrumented baseline
+Telemetry           clocks/thermal/firmware/revision unavailable                  NOT_OBSERVABLE; no spec substitute
+Serialization       facts in RAM during window; common writes after DRAIN        Existing SDV-BMT native semantics
+
+DUT-service = t_complete - t_submit_begin includes H2D + native runtime/graph + D2H.
+Output stage = t_output_ready - t_complete includes checked u8 conversion + common
+postprocess/encode/record. Request completion/output_ready also include issue lag
+from t_sched. Never subtract overhead to re-label metrics.
+
+Synchronous fallback is common §6.3, NOT asynchronous completion. Issuer/timeout/
+arrivals are serviced after submit returns. Must be disclosed before real capture.
+Common §6.4 permits output conversion in collect; device guide's ideal output is
+uint8 from the model/device, so explicitly confirm this location with maintainer.
+The R18 actual trial was a cold, unqualified direct-graph run; it includes first-use
+JIT and allocation and is not pure NPU latency or steady-state throughput. It passed
+for one image only. No current evidence proves full native steady-state resource
+behavior; dataset qualification and prebuilt buffer/trace reuse must be measured
+first. R50 and R101 have not run through the native SDV-BMT executor on the NPU.
+Standalone Python R101 success is not native executor qualification. R101 uses the
+BF16 branch, but its larger-channel memory/tile behavior still needs bounded gates.
