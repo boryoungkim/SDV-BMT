@@ -15,7 +15,7 @@ CXXFLAGS ?= -O2 -std=c++17 -Wall -Wextra -Werror
 PYTHON ?= python3
 BUILD := build
 COMMON := $(wildcard src/common/*.hpp)
-DIGEST_SRCS := Makefile $(wildcard src/*.cpp src/*/*.hpp tests/*.cpp)
+DIGEST_SRCS := Makefile $(wildcard src/*.cpp src/*/*.hpp tests/*.cpp) $(wildcard src/eagle_n/*.cpp)
 RAW_DUMP_SRC := ../tools/stage2b_g_real/raw_dump.cpp
 STAMP = PYTHONPATH=$(abspath ../src) $(PYTHON) -m sdv_bmt.dut.native_source $(abspath .)
 NVIDIA_LINK = -L$(CUDA_HOME)/lib64 -Wl,-rpath,$(CUDA_HOME)/lib64 -lnvrtc -lcuda -lnvidia-ml -ldl \
@@ -50,3 +50,15 @@ clean:
 	rm -rf $(BUILD)
 
 .PHONY: all portable raw-dump clean
+
+# Optional Eagle-N plugin; the SDK is not required by all/portable.
+eagle-n: $(BUILD)/sdv-bmt-native-eagle-n
+
+$(BUILD)/sdv-bmt-native-eagle-n: $(DIGEST_SRCS) | $(BUILD)
+	$(CXX) $(CXXFLAGS) -o $@ src/main_eagle_n.cpp -ldl
+	$(STAMP) > $@.source-tree.sha256
+
+eagle-n-sdk:
+	PYTHON=$(PYTHON) ../tools/eagle_n/build_native.sh
+
+.PHONY: eagle-n eagle-n-sdk

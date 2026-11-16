@@ -35,6 +35,7 @@ from ..contracts.specs import DatasetSpec, DrivingScenarioSpec
 from ..contracts.status import NOMINAL_LEVEL, ExecutionKind, ExecutionStatus
 from ..dut.fake import FakeBlockingDUT, FakeNativeDUT
 from ..dut.nvidia import NvidiaCudaDUT
+from ..dut.eagle_n import EagleNDUT
 from ..evidence.bundle import MANIFEST_FILE, read_json
 from ..input.annotations import IndexAnnotationSource
 from ..input.dataset_fixture import DatasetFixtureProvider
@@ -54,7 +55,7 @@ WORKLOADS = {FakeIdentityWorkload.IMPLEMENTATION: FakeIdentityWorkload,
              YoloxCocoWorkload.IMPLEMENTATION: YoloxCocoWorkload,
              DeepLabCityscapesWorkload.IMPLEMENTATION: DeepLabCityscapesWorkload}
 DUT_ADAPTERS = {FakeBlockingDUT.ADAPTER: FakeBlockingDUT, FakeNativeDUT.ADAPTER: FakeNativeDUT,
-                NvidiaCudaDUT.ADAPTER: NvidiaCudaDUT}
+                NvidiaCudaDUT.ADAPTER: NvidiaCudaDUT, EagleNDUT.ADAPTER: EagleNDUT}
 STRESS_KINDS = {FakeStressProvider.KIND: FakeStressProvider}
 
 
