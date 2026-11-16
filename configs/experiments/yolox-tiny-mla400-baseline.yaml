@@ -1,0 +1,33 @@
+# YOLOX NPU port (ACTUAL, Mobilint MLA400 /dev/aries2, single core Cluster0/Core0). Baseline (porting guide step 8):
+# YOLOX-Tiny compiled for aries-rb (8-bit, cut at the nine head convolutions, head tail on the host) on the first
+# 1000 COCO val2017 images at 416, nominal (no stress), N=1, queue 0, drop_new, 32 untimed precondition requests,
+# fixed rate 30 Hz (the GPU family rate), deadline = frame period. Output reference = the model's NPU capture golden
+# (determinism/corruption diagnostic only). Same plan as yolox-tiny-baseline.yaml except workload, DUT and golden.
+schema_version: 1
+experiment_id: yolox-tiny-mla400-baseline
+execution_kind: actual
+seed: 0
+repetitions: 1
+input: ../inputs/coco-val2017-first1000-416.yaml
+workload: ../workloads/yolox-tiny-coco-v1-mla400-q8.yaml
+dut: ../duts/mobilint-mla400-aries2-single-c0c0.yaml
+stress: {spec: ../stress/fake-virtual-axis.yaml, level: none}
+replay: {mode: fixed_rate, rate_hz: 30, lead_ns: 2_000_000}
+run:
+  max_inflight: 1
+  queue_capacity: 0
+  on_full: drop_new
+  request_timeout_ns: 1_000_000_000
+  drain_ns: 1_000_000_000
+  output_capture: task_output_all
+  on_request_error: continue
+evaluation:
+  deadline: {policy: frame_period, period_ns: 33_333_333}
+  output_reference:
+    kind: external_golden
+    path: ../references/coco-val2017-first1000-416.yolox-tiny-coco-v1-mla400-q8.npu-capture.golden.jsonl
+    sha256: 487dd0efee24ddadb06e7c99f27511eee9df95fd6a437b35f0c0efc26a090516
+realtime:
+  cpu_affinity: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
+  wait_policy: spin
+  precondition_requests: 32

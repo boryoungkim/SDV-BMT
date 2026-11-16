@@ -1,0 +1,29 @@
+# Model-level Metric Set v1: the YOLOX-S MLA400 workload that declares the canonical task-quality evaluator
+# coco-detection-bbox/1. Identical to yolox-s-coco-v1-mla400-q8.yaml (same model artifact, compiled model,
+# preprocess, postprocess and codec) except workload_id and quality_evaluator; a run with it freezes the ground
+# truth of its planned items in the bundle so COCO quality is evaluated from the bundle alone (as
+# yolox-s-coco-v1-quality.yaml does for the GPU).
+schema_version: 1
+workload_id: yolox-s-coco-v1-mla400-q8-quality
+implementation: yolox_coco
+task: coco-2017-object-detection
+artifact_sha256: c5c2d13e59ae883e6af3b45daea64af4833a4951c92d116ec270d9ddbe998063
+precision: int8
+batch: 1
+preprocess: {id: yolox-letterbox-bilinear-bgr, version: "1"}
+postprocess: {id: yolox-decode-nms-coco, version: "1"}
+codec: {id: canonical-json-utf8, version: "1"}
+output_ready: canonical task output (COCO detections of the image after decode, class-aware NMS and top-100) encoded and appended to outputs.bin
+quality_evaluator: coco-detection-bbox/1
+options:
+  input_size: 640
+  num_anchors: 8400
+  device_program:
+    language: mobilint_mxq
+    mxq: ~/sdv_assets/compile/head9/yolox_s_head9.mxq
+    mxq_sha256: 75560607180f6502f121390c384934dce47f24f63e8b5bea1cbf4d83a54285bc
+    graph: head9
+    cut_onnx_sha256: ca17ecb8c1ec6a14a71245b58d9bea535f4d3a67e2f431fc728744e83ea980ad
+    compile_record: ~/sdv_assets/compile/head9/yolox_s_head9.cut.json
+    input_bytes: 4915200
+    task_output_bytes: 2856000

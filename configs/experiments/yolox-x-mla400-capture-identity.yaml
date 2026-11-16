@@ -1,0 +1,31 @@
+# YOLOX NPU port (ACTUAL, Mobilint MLA400 /dev/aries2, single core Cluster0/Core0). Second capture (porting guide
+# step 6.3): the same plan as yolox-x-mla400-capture.yaml, evaluated against the golden extracted from the first
+# capture (tools/stage2b_g_real/capture_golden.py), so bmt.output.identity_rate diagnoses run-to-run determinism
+# and output corruption of the NPU path (not correctness).
+schema_version: 1
+experiment_id: yolox-x-mla400-capture-identity
+execution_kind: actual
+seed: 0
+repetitions: 1
+input: ../inputs/coco-val2017-first1000.yaml
+workload: ../workloads/yolox-x-coco-v1-mla400-q8.yaml
+dut: ../duts/mobilint-mla400-aries2-single-c0c0.yaml
+stress: {spec: ../stress/fake-virtual-axis.yaml, level: none}
+replay: {mode: asap, lead_ns: 2_000_000}
+run:
+  max_inflight: 1
+  queue_capacity: 0
+  on_full: drop_new
+  request_timeout_ns: 1_000_000_000
+  drain_ns: 1_000_000_000
+  output_capture: task_output_all
+  on_request_error: continue
+evaluation:
+  output_reference:
+    kind: external_golden
+    path: ../references/coco-val2017-first1000.yolox-x-coco-v1-mla400-q8.npu-capture.golden.jsonl
+    sha256: 408128d2f5eac1a016bc45fb2822a626cf69f388f47a8e4593339c47d1d8aa8b
+realtime:
+  cpu_affinity: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
+  wait_policy: spin
+  precondition_requests: 32
