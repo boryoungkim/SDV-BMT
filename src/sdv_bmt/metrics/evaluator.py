@@ -31,6 +31,7 @@ from ..contracts.records import (
     LEGACY_METRIC_CATALOG_VERSION,
     METRIC_CATALOG_VERSION,
     METRIC_CATALOG_VERSION_V1,
+    METRIC_CATALOG_VERSION_V1_2,
     MetricResult,
     MetricSetResult,
     raw_evidence_files,
@@ -61,14 +62,15 @@ from .catalog import CATALOG_VERSION, METRICS, P99_MIN_SAMPLES, PERCENTILE_METHO
 from .identity import output_identity
 from .portable import INF, Computed, maximum, per_second, percentile, planned_percentile, rate
 from .quality_detection import quality_protocol
+from .quality_det3d import det3d_protocol
 from .quality_segmentation import segmentation_protocol
-from ..contracts.quality import CITYSCAPES_SEMSEG_MIOU_V1
+from ..contracts.quality import CITYSCAPES_SEMSEG_MIOU_V1, NUSCENES_DET3D_V1
 
 S = RequestState
 EVAL_SCHEMA_VERSION = 1  # legacy catalog evaluations
 METRIC_SET_EVAL_SCHEMA_VERSION = 2  # Metric Set v1 evaluations (layer, population, context)
 EVAL_VOLATILE_FIELDS = ("eval_id", "run_id", "created_at_utc", "outputs")
-CATALOGS = (METRIC_CATALOG_VERSION, METRIC_CATALOG_VERSION_V1, LEGACY_METRIC_CATALOG_VERSION)
+CATALOGS = (METRIC_CATALOG_VERSION, METRIC_CATALOG_VERSION_V1, METRIC_CATALOG_VERSION_V1_2, LEGACY_METRIC_CATALOG_VERSION)
 DEFAULT_CATALOG = METRIC_CATALOG_VERSION  # Metric Set v1.1 (v0.1.2); v1 and the legacy catalog stay selectable
 assert CATALOG_VERSION == LEGACY_METRIC_CATALOG_VERSION and metric_set_v1.CATALOG_VERSION == METRIC_CATALOG_VERSION
 assert metric_set_v1.CATALOG_VERSION_V1 == METRIC_CATALOG_VERSION_V1
@@ -128,10 +130,13 @@ def metric_set_parameters(bundle: RunBundle, override: Optional[EvaluationOverri
     reference = bundle.manifest.get("quality_reference")
     evaluator = (reference or {}).get("evaluator") or bundle.run_spec["resolved_plan"]["workload"].get(
         "quality_evaluator")
-    segmentation = catalog == METRIC_CATALOG_VERSION and evaluator == CITYSCAPES_SEMSEG_MIOU_V1
-    if segmentation and point is not None:
-        raise EvaluationError("a detection operating point does not apply to the segmentation quality evaluator")
-    quality = segmentation_protocol() if segmentation else quality_protocol(bundle, point)
+    segmentation = (catalog in (METRIC_CATALOG_VERSION, METRIC_CATALOG_VERSION_V1_2)
+                    and evaluator == CITYSCAPES_SEMSEG_MIOU_V1)
+    det3d = catalog == METRIC_CATALOG_VERSION_V1_2 and evaluator == NUSCENES_DET3D_V1
+    if (segmentation or det3d) and point is not None:
+        raise EvaluationError("a detection operating point does not apply to this quality evaluator")
+    quality = (segmentation_protocol() if segmentation else det3d_protocol() if det3d
+               else quality_protocol(bundle, point))
     params = {
         "catalog_version": catalog,
         "percentile_method": params["percentile_method"],
@@ -146,7 +151,8 @@ def metric_set_parameters(bundle: RunBundle, override: Optional[EvaluationOverri
         "deadline": deadline_source,
         "required_rate_hz": "override" if required is not None else "not_supplied",
         "quality_operating_point": ("not_applicable" if quality is None or not quality.get("implemented")
-                                    or segmentation else "override" if point is not None else "evaluator_default"),
+                                    or segmentation or det3d else "override" if point is not None
+                                    else "evaluator_default"),
     }
     return params, sources
 

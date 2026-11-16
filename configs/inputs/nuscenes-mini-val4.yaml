@@ -1,0 +1,22 @@
+# CenterPoint (LiDAR) mini input: the 162 LIDAR_TOP keyframes of the four official val scenes in nuScenes v1.0-mini
+# (scene-0103, scene-0553, scene-0796, scene-0916), built by tools/centerpoint/build_nuscenes_input.py from the official
+# v1.0-mini archive (downloaded by the user under the nuScenes terms; the dataset stays private and is not redistributed).
+# Payloads are the offline-built pillar tensors (keyframe + the 9 nearest earlier sweeps, hard voxelization, SDVPIL01);
+# the 3D ground truth (global frame, with points per box and attributes), the bicycle racks and the keyframe poses are
+# inline in the index.  Rows are in scene order, then by timestamp.
+schema_version: 1
+input_kind: dataset
+input_id: nuscenes-mini-val4
+version: "1"
+family:
+  source_dataset: nuscenes-v1.0-lidar-top-keyframes
+  source_version: "1"
+  task: nuscenes-3d-detection-10class
+  annotation_schema: nuscenes-det3d-gt/1
+  preprocessing_contract: nuscenes-pillar02-p40000/1
+source:
+  index: ../../datasets/nuscenes-mini-val4/index.jsonl
+  index_sha256: 17c35bee0c3ac546e9af7e726688efa0d9d3f7c1bbc788f08ce38ebe5ac81d82
+selection:
+  start: 0
+  count: 162

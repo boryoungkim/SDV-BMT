@@ -1,0 +1,33 @@
+# CenterPoint part: CenterPoint-Pillars (pillar 0.2 m, SECOND + SECONDFPN, CenterHead with 6 tasks, circle NMS) on
+# nuScenes LiDAR, the mmdetection3d checkpoint centerpoint_02pillar_second_secfpn_circlenms_4x8_cyclic_20e_nus exported
+# to ONNX by tools/centerpoint/export_onnx.py (BatchNorm folded; the ONNX file below is the model artifact) and converted
+# to a cuDNN plan by tools/centerpoint/build_centerpoint_plan.py.  The device runs the pillar feature net, the BEV
+# scatter, backbone, neck and head and returns the raw head outputs; decode + circle NMS + encode run in the native
+# output stage.  The 10-sweep merge and the voxelization are offline (input builder), outside the measured path.
+# Task quality: nuScenes detection mAP / NDS (nuscenes-det3d-cvpr2019/1, Metric Set v1.2) from the ground truth frozen
+# in the bundle.  ACTUAL GPU reference accelerator; not an NPU result.  Results of different models are compared side by
+# side, not attributed.
+schema_version: 1
+workload_id: centerpoint-pillar02-nus-v1
+implementation: centerpoint_nuscenes
+task: nuscenes-3d-detection-10class
+artifact_sha256: f7289b0ebc07d7bd3c164733156ba6ce59189672050bd19d22f8966f788bb481
+precision: fp32
+batch: 1
+preprocess: {id: pillar-payload-body, version: "1"}
+postprocess: {id: centerpoint-decode-circlenms, version: "1"}
+codec: {id: centerpoint-det3d-f32, version: "1"}
+output_ready: canonical task output (decoded 3D detections in the LiDAR frame, centerpoint-det3d-f32/1) encoded and appended to outputs.bin
+quality_evaluator: nuscenes-det3d-cvpr2019/1
+options:
+  device_program:
+    language: cudnn_plan
+    plan: models/centerpoint-pillar02/centerpoint_pillar02.plan.json
+    plan_sha256: c2d0cd49efa0d3cfb39f7c61439deb45c1b8326751ed0dbf545cf532541338cd
+    weights: models/centerpoint-pillar02/centerpoint_pillar02.weights.f32
+    weights_sha256: ef1bd7b0ee71e356694c78bccb0039189b1ee6699d4b726dc3858030f2725fe7
+    input_bytes: 16480000
+    # head outputs float32 [70, 128, 128], then the four u64 frequency-probe words at an 8-byte aligned offset
+    output_bytes: 4587552
+    task_output_bytes: 4587520
+    timing_offset: 4587520

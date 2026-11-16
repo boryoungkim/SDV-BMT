@@ -2,6 +2,33 @@
 
 All notable changes to SDV-BMT are recorded here. Versions follow semantic versioning.
 
+## [Unreleased]
+
+### Added
+
+- **3D detection (LiDAR): CenterPoint-Pillars**, the mmdetection3d nuScenes checkpoint (pillar 0.2 m, circle NMS).
+  New workload `centerpoint_nuscenes` (input contract `nuscenes-pillar02-p40000/1`): the 10-sweep point cloud and the
+  voxelization are built offline (pillar tensor payloads), the device runs pillar features, BEV scatter, backbone,
+  neck and head, and decode + circle NMS + encode (`centerpoint-det3d-f32/1`) run in the native output stage with a
+  byte-identical Python twin. A NaN heatmap logit, or a detection value that does not fit float32, is an output error
+  in both.
+- **Native cuDNN plan operations** for CenterPoint: pillar feature net, pillar scatter, zero fill and depth-to-space,
+  in a third NVRTC source compiled only when a plan uses it.
+- **Model-level Metric Set v1.2** (`sdv-bmt-model-metric-set-v1.2`, selectable; the default stays v1.1): v1.1 plus
+  eight nuScenes detection metrics (`quality.det3d.coverage`, `quality.det3d.conditional.map`, `.nds`, `.mate`,
+  `.mase`, `.maoe`, `.mave`, `.maae`), computed by the evaluator `nuscenes-det3d-cvpr2019/1` from the ground truth
+  frozen in the bundle.
+- **Run series (minimal).** An experiment may declare `series: {max_items_per_run, boundary}`; `sdv-bmt run` then
+  executes the dataset selection as consecutive ordinary runs (parts) that never split a block of index rows with the
+  same `metadata[boundary]` value, and writes `series.json`. `sdv-bmt evaluate SERIES_DIR` checks that the parts
+  differ only in their selection and produces one result: counts summed, distributions over all requests, rates over
+  the sum of the parts' windows, task quality evaluated once over all items. A series takes no output reference and
+  one repetition. `series.json` records the process gap between part runs and, for real-time parts, each part's
+  measurement window on the host monotonic clock and the gap between consecutive windows.
+- **Tools** (offline): `tools/centerpoint/` (official info files and reference run, nuScenes input builder, model
+  re-definition, ONNX export, plan converter, numeric gate, output-twin and evaluator cross-checks, cuDNN table pinning,
+  experiment generator).
+
 ## [0.1.2] — 2026-11-10
 
 Model extension on the GPU reference track: eight reference models instead of one (five YOLOX detectors on COCO,

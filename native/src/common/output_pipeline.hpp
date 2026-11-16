@@ -7,6 +7,8 @@
 //                          needs a per-item output context (image id and original size) from the stage command
 //   labelmap_rowrle_v1     DeepLabV3+ Cityscapes segmentation workload, v0.1.2 (labelmap_output.hpp): uint8 label
 //                          map check + labelmap-u8-rowrle/1 codec; no per-item context
+//   centerpoint_det3d_v1   CenterPoint-Pillars nuScenes 3D detection workload (centerpoint_output.hpp): head decode +
+//                          circle NMS + centerpoint-det3d-f32/1 codec; no per-item context
 #pragma once
 
 #include <cstdint>
@@ -15,6 +17,7 @@
 #include <string_view>
 
 #include "json.hpp"
+#include "centerpoint_output.hpp"
 #include "labelmap_output.hpp"
 #include "loop.hpp"
 #include "reference_output.hpp"
@@ -31,6 +34,8 @@ class OutputPipeline {
             yolox_.emplace(spec);
         } else if (kind_ == "labelmap_rowrle_v1") {
             labelmap_.emplace(spec);
+        } else if (kind_ == "centerpoint_det3d_v1") {
+            centerpoint_.emplace(spec);
         } else {
             throw JsonError("unsupported output pipeline " + kind_);
         }
@@ -47,6 +52,7 @@ class OutputPipeline {
     // Upper bound of one encoded task output, used to reserve the output buffers before MEASURE.
     size_t max_blob_bytes() const {
         if (labelmap_) return labelmap_->max_blob_bytes();
+        if (centerpoint_) return centerpoint_->max_blob_bytes();
         return yolox_ ? YoloxCocoOutput::kMaxBlobBytes : size_t(512);
     }
 
@@ -54,6 +60,7 @@ class OutputPipeline {
                 ErrorInfo& err) const {
         if (yolox_) return yolox_->encode(request_id, item_index, raw, blob, phase, err);
         if (labelmap_) return labelmap_->encode(request_id, item_index, raw, blob, phase, err);
+        if (centerpoint_) return centerpoint_->encode(request_id, item_index, raw, blob, phase, err);
         return reference_->encode(request_id, item_index, raw, blob, phase, err);
     }
 
@@ -62,6 +69,7 @@ class OutputPipeline {
     std::optional<ReferenceConvNetOutput> reference_;
     std::optional<YoloxCocoOutput> yolox_;
     std::optional<LabelmapRleOutput> labelmap_;
+    std::optional<CenterPointOutput> centerpoint_;
 };
 
 }  // namespace sdv

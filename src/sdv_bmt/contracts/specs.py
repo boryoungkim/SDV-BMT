@@ -855,6 +855,26 @@ class RealtimeConfig:
 
 
 @dataclass(frozen=True)
+class SeriesSpec:
+    """Run series (minimal; a v0.2 measurement extension brought forward for CenterPoint, approved 2026-11-13).
+
+    One experiment's dataset selection is executed as consecutive parts (each an ordinary run whose plan differs
+    from the experiment's only by ``input.selection``), so that a selection larger than the pinned-memory limit can
+    be measured; ``sdv-bmt evaluate SERIES_DIR`` then produces one result.  Parts follow the index order and hold at
+    most ``max_items_per_run`` items; a part never splits a run of consecutive index rows with the same
+    ``metadata[boundary]`` value (e.g. a nuScenes scene), and each such value must occupy one contiguous block.
+    """
+
+    max_items_per_run: int
+    boundary: str
+
+    def __post_init__(self) -> None:
+        if type(self.max_items_per_run) is not int or self.max_items_per_run < 1:
+            raise ValueError("series.max_items_per_run must be an integer >= 1")
+        check_identifier(self.boundary, "series.boundary")
+
+
+@dataclass(frozen=True)
 class ExperimentPlan:
     """Stage 1A experiment plan. There is intentionally no evaluation_level field."""
 
@@ -872,6 +892,7 @@ class ExperimentPlan:
     seed: int = 0
     repetitions: int = 1
     realtime: Optional[RealtimeConfig] = None  # Stage 1R; absent for Stage 1A virtual runs
+    series: Optional[SeriesSpec] = None  # run series; absent for ordinary single-run experiments
 
     def __post_init__(self) -> None:
         _check_schema_version(self.schema_version)

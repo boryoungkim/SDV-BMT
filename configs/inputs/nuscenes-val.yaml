@@ -1,0 +1,21 @@
+# CenterPoint (LiDAR) full val input: the 6019 LIDAR_TOP keyframes of the 150 official nuScenes val scenes (v1.0-trainval,
+# devkit split order), built by tools/centerpoint/build_nuscenes_input.py from the official metadata and LiDAR blob
+# archives (downloaded by the user under the nuScenes terms; the dataset stays private and is not redistributed).
+# Same payload format, ground truth and poses as nuscenes-mini-val4 (whose 162 samples are in this set with identical
+# payloads and annotations).  Rows are in scene order, then by timestamp; metadata.scene drives the run series split.
+schema_version: 1
+input_kind: dataset
+input_id: nuscenes-val
+version: "1"
+family:
+  source_dataset: nuscenes-v1.0-lidar-top-keyframes
+  source_version: "1"
+  task: nuscenes-3d-detection-10class
+  annotation_schema: nuscenes-det3d-gt/1
+  preprocessing_contract: nuscenes-pillar02-p40000/1
+source:
+  index: ../../datasets/nuscenes-val/index.jsonl
+  index_sha256: 99ece0e19123a5d9594443db0f0749b40c3c302357d52c0b4229e1daf18e5293
+selection:
+  start: 0
+  count: 6019

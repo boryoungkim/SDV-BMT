@@ -12,6 +12,11 @@
 //   conv epilogue "bias (+ residual) then ReLU" (act 3 and/or res_before_act), gap (global average pooling),
 //   broadcast (Cx1x1 -> CxHxW), resize_bilinear (align_corners=False, PyTorch source-index arithmetic) and
 //   argmax_u8 (class index of the maximum over channels, lowest index on ties, written as uint8).
+// CenterPoint-Pillars adds, in a third glue source compiled only when a plan uses them:
+//   pillar_features (PillarFeatureNet: the 11 decorated point features, masked, the linear layer with BatchNorm
+//   folded, ReLU, maximum over the pillar's points; one block per pillar), pillar_scatter (clears the BEV canvas,
+//   then writes each non-empty pillar's feature column at (y, x)) and depth_to_space2 (the exact rearrangement that
+//   turns a 1x1 convolution into a kernel = stride = 2 transposed convolution).
 // At prepare the executor checks every step's read/write byte ranges against its buffer (input, task output,
 // arena, weights) and that the plan's writes to the output buffer cover the whole task output; the output
 // buffer is not cleared between requests, so an unwritten part would silently keep the previous item's result.
@@ -215,6 +220,81 @@ extern "C" __global__ void sdv_argmax_u8(const float* __restrict__ x, unsigned c
 )SDV";
 }
 
+// Third glue source (CenterPoint-Pillars): compiled only for plans that use one of its kernels, so the first two
+// sources, their cubins and every fact derived from them stay unchanged for the other plans.
+inline const char* glue3_kernel_source() {
+    return R"SDV(
+// SDV-BMT cuDNN-plan glue kernels v3 (CenterPoint-Pillars)
+// PillarFeatureNet (mmdet3d, legacy=False): per point [x, y, z, i, t, x-mx, y-my, z-mz, x-cx, y-cy, z-cz], points
+// beyond the pillar's count set to zero, then max over the M points of ReLU(W f + b).  Separate IEEE operations
+// (no contraction) where the reference computes them separately.  One block per pillar, blockDim.x = channels.
+extern "C" __global__ void sdv_pillar_features(const float* __restrict__ vox, const int* __restrict__ npts,
+                                               const int* __restrict__ yx, const float* __restrict__ W,
+                                               const float* __restrict__ b, float* __restrict__ out, int P, int M,
+                                               float vx, float vy, float vz, float xo, float yo, float zo) {
+    __shared__ float f[32][11];
+    __shared__ float mean[3];
+    const int p = blockIdx.x, c = threadIdx.x;
+    const int n = npts[p];
+    const float* v = vox + (long)p * M * 5;
+    if (c < 3) {
+        float s = 0.0f;
+        for (int t = 0; t < M; ++t) s = __fadd_rn(s, v[t * 5 + c]);
+        mean[c] = __fdiv_rn(s, (float)(n > 1 ? n : 1));
+    }
+    __syncthreads();
+    if (c < M) {
+        const int t = c;
+        if (t < n) {
+            for (int k = 0; k < 5; ++k) f[t][k] = v[t * 5 + k];
+            for (int k = 0; k < 3; ++k) f[t][5 + k] = __fsub_rn(v[t * 5 + k], mean[k]);
+            const float cx = (float)yx[2 * p + 1], cy = (float)yx[2 * p];
+            f[t][8] = __fsub_rn(v[t * 5 + 0], __fadd_rn(__fmul_rn(cx, vx), xo));
+            f[t][9] = __fsub_rn(v[t * 5 + 1], __fadd_rn(__fmul_rn(cy, vy), yo));
+            f[t][10] = __fsub_rn(v[t * 5 + 2], __fadd_rn(__fmul_rn(0.0f, vz), zo));
+        } else {
+            for (int k = 0; k < 11; ++k) f[t][k] = 0.0f;
+        }
+    }
+    __syncthreads();
+    const float* w = W + (long)c * 11;
+    float m = 0.0f;  // the maximum of ReLU outputs, so it starts at 0
+    for (int t = 0; t < M; ++t) {
+        float acc = 0.0f;
+        for (int k = 0; k < 11; ++k) acc = __fadd_rn(acc, __fmul_rn(f[t][k], w[k]));
+        acc = __fadd_rn(acc, b[c]);
+        if (acc > m) m = acc;
+    }
+    out[(long)c * P + p] = m;
+}
+extern "C" __global__ void sdv_fill_zero(float* __restrict__ y, long n) {
+    const long i = (long)blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) y[i] = 0.0f;
+}
+// PointPillarsScatter: canvas[c, y, x] = feat[c, p] for every pillar with at least one point (pillars are unique).
+extern "C" __global__ void sdv_pillar_scatter(const float* __restrict__ feat, const int* __restrict__ npts,
+                                              const int* __restrict__ yx, float* __restrict__ canvas, int P, int C,
+                                              int H, int W) {
+    const long i = (long)blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= (long)C * P) return;
+    const int p = (int)(i % P), c = (int)(i / P);
+    if (npts[p] <= 0) return;
+    const int y = yx[2 * p], x = yx[2 * p + 1];
+    if (y < 0 || y >= H || x < 0 || x >= W) return;
+    canvas[((long)c * H + y) * W + x] = feat[(long)c * P + p];
+}
+// y[c, 2h + dy, 2w + dx] = x[c * 4 + dy * 2 + dx, h, w]
+extern "C" __global__ void sdv_depth_to_space2(const float* __restrict__ x, float* __restrict__ y, int C, int H, int W) {
+    const long n = (long)C * 4 * H * W;
+    const long i = (long)blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+    const int OW = 2 * W, OH = 2 * H;
+    const int ox = (int)(i % OW), oy = (int)((i / OW) % OH), c = (int)(i / ((long)OH * OW));
+    y[i] = x[(((long)c * 4 + (oy & 1) * 2 + (ox & 1)) * H + (oy >> 1)) * W + (ox >> 1)];
+}
+)SDV";
+}
+
 class CudnnPlanExecutor {
    public:
     // ------------------------------------------------------------ identity (no device context needed)
@@ -282,9 +362,11 @@ class CudnnPlanExecutor {
         const size_t input_bytes = size_t(program.at("input_bytes").as_int());
         const size_t task_output_bytes = size_t(program.at("task_output_bytes").as_int());
         bool need_glue2 = false;  // a v0.1.2 op or epilogue anywhere in the plan
+        bool need_glue3 = false;  // a CenterPoint-Pillars op anywhere in the plan
         for (const Json& s : plan.at("steps").as_array()) {
             const std::string& op = s.at("op").as_string();
             if (op == "gap" || op == "broadcast" || op == "resize_bilinear" || op == "argmax_u8") need_glue2 = true;
+            if (op == "pillar_features" || op == "pillar_scatter" || op == "depth_to_space2") need_glue3 = true;
             if (op == "conv" && (s.at("act").as_int() == 3 || (s.has("res_before_act") && s.at("res_before_act").as_bool())))
                 need_glue2 = true;
         }
@@ -312,6 +394,16 @@ class CudnnPlanExecutor {
                             std::make_pair(&fn_broadcast_, "sdv_broadcast"),
                             std::make_pair(&fn_resize_, "sdv_resize_bilinear"), std::make_pair(&fn_argmax_, "sdv_argmax_u8")})
                 cu_check(cuModuleGetFunction(f.first, module2_, f.second), "cuModuleGetFunction(glue2)");
+        }
+        std::string cubin3, log3;
+        if (need_glue3) {
+            compile_source(glue3_kernel_source(), "sdv_bmt_cudnn_plan_glue3.cu", arch, cubin3, log3);
+            cu_check(cuModuleLoadData(&module3_, cubin3.data()), "cuModuleLoadData(glue3)");
+            for (auto& f : {std::make_pair(&fn_pillar_features_, "sdv_pillar_features"),
+                            std::make_pair(&fn_fill_zero_, "sdv_fill_zero"),
+                            std::make_pair(&fn_pillar_scatter_, "sdv_pillar_scatter"),
+                            std::make_pair(&fn_d2s_, "sdv_depth_to_space2")})
+                cu_check(cuModuleGetFunction(f.first, module3_, f.second), "cuModuleGetFunction(glue3)");
         }
         // byte ranges each step reads/writes, checked against the buffers after parsing (v0.1.2 safeguard)
         std::vector<Extent> extents;
@@ -538,6 +630,67 @@ class CudnnPlanExecutor {
                     extent(st.x, 4ULL * c * h * w, false);
                     extent(st.y, 1ULL * st.n, true);
                 }
+            } else if (op == "pillar_features") {
+                st.op = Op::PillarFeatures;
+                st.x = ref(s.at("x"));
+                st.aux1 = ref(s.at("num_points"));
+                st.aux2 = ref(s.at("coors"));
+                st.y = ref(s.at("y"));
+                const long long p = s.at("pillars").as_int(), m = s.at("points").as_int(), ch = s.at("channels").as_int();
+                if (s.at("features").as_int() != 5 || m <= 0 || m > 32 || ch < 32 || ch > 1024 || p <= 0)
+                    throw JsonError("pillar_features needs 5 point features, 1..32 points and 32..1024 channels");
+                st.i[0] = int(p);
+                st.i[1] = int(m);
+                st.i[2] = int(ch);
+                const Json::Array& bits = s.at("consts_f32_bits").as_array();
+                if (bits.size() != 6) throw JsonError("pillar_features needs 6 float32 constants");
+                for (int q = 0; q < 6; ++q) {
+                    const uint32_t u = uint32_t(bits[size_t(q)].as_int());
+                    std::memcpy(&st.f[q], &u, sizeof u);
+                }
+                st.w_off = size_t(s.at("w_offset").as_int());
+                st.b_off = size_t(s.at("b_offset").as_int());
+                extent(st.x, 4ULL * p * m * 5, false);
+                extent(st.aux1, 4ULL * p, false);
+                extent(st.aux2, 8ULL * p, false);
+                extent(st.y, 4ULL * ch * p, true);
+                weight_range(st.w_off, 4ULL * ch * 11);
+                weight_range(st.b_off, 4ULL * ch);
+            } else if (op == "pillar_scatter") {
+                const long long p = s.at("pillars").as_int(), ch = s.at("channels").as_int(), h = s.at("h").as_int(),
+                                w = s.at("w").as_int();
+                if (p <= 0 || ch <= 0 || h <= 0 || w <= 0) throw JsonError("pillar_scatter needs positive sizes");
+                Step z;  // clear the canvas: cells without a pillar are zero
+                z.op = Op::FillZero;
+                z.y = ref(s.at("y"));
+                z.n = long(ch * h * w);
+                extent(z.y, 4ULL * z.n, true);
+                steps_.push_back(z);
+                st.op = Op::PillarScatter;
+                st.x = ref(s.at("x"));
+                st.aux1 = ref(s.at("num_points"));
+                st.aux2 = ref(s.at("coors"));
+                st.y = z.y;
+                st.i[0] = int(p);
+                st.i[1] = int(ch);
+                st.i[2] = int(h);
+                st.i[3] = int(w);
+                st.n = long(ch * p);
+                extent(st.x, 4ULL * ch * p, false);
+                extent(st.aux1, 4ULL * p, false);
+                extent(st.aux2, 8ULL * p, false);
+            } else if (op == "depth_to_space2") {
+                st.op = Op::DepthToSpace;
+                st.x = ref(s.at("x"));
+                st.y = ref(s.at("y"));
+                const long long c = s.at("c").as_int(), h = s.at("h").as_int(), w = s.at("w").as_int();
+                if (c <= 0 || h <= 0 || w <= 0) throw JsonError("depth_to_space2 needs positive sizes");
+                st.i[0] = int(c);
+                st.i[1] = int(h);
+                st.i[2] = int(w);
+                st.n = long(4 * c * h * w);
+                extent(st.x, 4ULL * st.n, false);
+                extent(st.y, 4ULL * st.n, true);
             } else {
                 throw JsonError("unsupported plan step " + op);
             }
@@ -561,6 +714,11 @@ class CudnnPlanExecutor {
             facts["glue2_source_sha256"] = Sha256::of(std::string(glue2_kernel_source()));
             facts["glue2_cubin_sha256"] = Sha256::of(cubin2);
             facts["glue2_nvrtc_log"] = log2;
+        }
+        if (need_glue3) {  // absent for plans without CenterPoint ops, so their facts are unchanged
+            facts["glue3_source_sha256"] = Sha256::of(std::string(glue3_kernel_source()));
+            facts["glue3_cubin_sha256"] = Sha256::of(cubin3);
+            facts["glue3_nvrtc_log"] = log3;
         }
         facts["cudnn_math_type_option"] = math;
         facts["cudnn_algo_policy"] = policy_;
@@ -667,6 +825,32 @@ class CudnnPlanExecutor {
                     launch(fn_head_, s.n, args, "cuLaunchKernel(head_transpose)");
                     break;
                 }
+                case Op::PillarFeatures: {
+                    CUdeviceptr np = ptr(s.aux1), yx = ptr(s.aux2), w = weights_ + s.w_off, b = weights_ + s.b_off;
+                    void* args[] = {&x, &np, &yx, &w, &b, &y, &s.i[0], &s.i[1],
+                                    &s.f[0], &s.f[1], &s.f[2], &s.f[3], &s.f[4], &s.f[5]};
+                    cu_check(cuLaunchKernel(fn_pillar_features_, unsigned(s.i[0]), 1, 1, unsigned(s.i[2]), 1, 1, 0,
+                                            stream_, args, nullptr),
+                             "cuLaunchKernel(pillar_features)");
+                    break;
+                }
+                case Op::FillZero: {
+                    long n = s.n;
+                    void* args[] = {&y, &n};
+                    launch(fn_fill_zero_, s.n, args, "cuLaunchKernel(fill_zero)");
+                    break;
+                }
+                case Op::PillarScatter: {
+                    CUdeviceptr np = ptr(s.aux1), yx = ptr(s.aux2);
+                    void* args[] = {&x, &np, &yx, &y, &s.i[0], &s.i[1], &s.i[2], &s.i[3]};
+                    launch(fn_pillar_scatter_, s.n, args, "cuLaunchKernel(pillar_scatter)");
+                    break;
+                }
+                case Op::DepthToSpace: {
+                    void* args[] = {&x, &y, &s.i[0], &s.i[1], &s.i[2]};
+                    launch(fn_d2s_, s.n, args, "cuLaunchKernel(depth_to_space2)");
+                    break;
+                }
             }
         }
     }
@@ -691,10 +875,13 @@ class CudnnPlanExecutor {
         module_ = nullptr;
         if (module2_) cuModuleUnload(module2_);
         module2_ = nullptr;
+        if (module3_) cuModuleUnload(module3_);
+        module3_ = nullptr;
     }
 
    private:
-    enum class Op { Conv, MaxPool, SpaceToDepth, Upsample, Copy, HeadTranspose, Gap, Broadcast, Resize, Argmax };
+    enum class Op { Conv, MaxPool, SpaceToDepth, Upsample, Copy, HeadTranspose, Gap, Broadcast, Resize, Argmax,
+                    PillarFeatures, FillZero, PillarScatter, DepthToSpace };
     struct Ref {
         int buf = 2;  // 0 input, 1 output, 2 arena
         size_t offset = 0;
@@ -706,12 +893,12 @@ class CudnnPlanExecutor {
     };
     struct Step {
         Op op = Op::Copy;
-        Ref x, y, res;
+        Ref x, y, res, aux1, aux2;
         bool has_res = false, res_before_act = false;
         size_t w_off = 0, b_off = 0, ws = 0;
         int act = 0, k = 0, hw = 0;
         int i[11] = {};
-        float f[2] = {};
+        float f[6] = {};
         long n = 0;
         cudnnTensorDescriptor_t xd = nullptr, yd = nullptr;
         cudnnFilterDescriptor_t wd = nullptr;
@@ -729,7 +916,8 @@ class CudnnPlanExecutor {
     long long probe_cycles_ = 0;
     CUdeviceptr weights_ = 0, arena_ = 0, workspace_ = 0;
     CUdeviceptr base_[3] = {0, 0, 0};
-    CUmodule module_ = nullptr, module2_ = nullptr;
+    CUmodule module_ = nullptr, module2_ = nullptr, module3_ = nullptr;
+    CUfunction fn_pillar_features_ = nullptr, fn_fill_zero_ = nullptr, fn_pillar_scatter_ = nullptr, fn_d2s_ = nullptr;
     CUfunction fn_s2d_ = nullptr, fn_bias_act_ = nullptr, fn_upsample_ = nullptr, fn_copy_ = nullptr,
                fn_head_ = nullptr, fn_probe_ = nullptr;
     CUfunction fn_bias_res_relu_ = nullptr, fn_gap_ = nullptr, fn_broadcast_ = nullptr, fn_resize_ = nullptr,
