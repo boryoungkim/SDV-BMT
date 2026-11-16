@@ -49,11 +49,8 @@ def npu():
     return identity
 
 
-@pytest.fixture(autouse=True)
-def registered(monkeypatch):
-    """The shared CLI does not register the adapter yet (request pending); tools/mobilint/sdv_bmt_mla400.py adds
-    it at runtime, and so do the tests."""
-    monkeypatch.setitem(cli.DUT_ADAPTERS, MobilintAriesDUT.ADAPTER, MobilintAriesDUT)
+def test_the_cli_registers_the_adapter():
+    assert cli.DUT_ADAPTERS[MobilintAriesDUT.ADAPTER] is MobilintAriesDUT
 
 
 def _first8(name: str = CAPTURE):
@@ -80,13 +77,7 @@ def _outputs_by_item(run_dir: Path) -> dict[int, str]:
 @pytest.fixture(scope="module")
 def capture(tmp_path_factory, npu):
     """One 8-image capture of YOLOX-S, shared by the tests that only read its bundle."""
-    mp = pytest.MonkeyPatch()
-    mp.setitem(cli.DUT_ADAPTERS, MobilintAriesDUT.ADAPTER, MobilintAriesDUT)
-    try:
-        out = run_plan(_first8(), tmp_path_factory.mktemp("capture"))
-    finally:
-        mp.undo()
-    return out
+    return run_plan(_first8(), tmp_path_factory.mktemp("capture"))
 
 
 def test_describe_identifies_the_device_and_the_runtime(npu):

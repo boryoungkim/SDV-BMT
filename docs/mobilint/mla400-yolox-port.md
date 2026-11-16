@@ -1,0 +1,111 @@
+# Mobilint MLA400 port of the YOLOX workloads: implementation notes
+
+For those working on this repository. Read this before changing anything under
+`native/src/mobilint/`, `src/sdv_bmt/dut/mobilint/`, `tools/mobilint/`, `configs/**/*mla400*` or
+`tests/device/test_mobilint_*`.
+
+This page contains **no measurement results**. The Mobilint SDK license (§8) forbids publishing performance,
+accuracy or benchmark results without Mobilint's written consent. Do not add results to this repository: no
+latency, AP or throughput values in code, comments, configs, commit messages or docs. Results live only in the
+evidence root on the reference host.
+
+## 1. What the port is
+
+| item | value |
+|---|---|
+| DUT | One ARIES chip of a Mobilint MLA400 card, device node `/dev/ariesN`; on the reference host `/dev/aries2`, the first of the card's four chips. Single-core mode on one pinned (cluster, core), Cluster0/Core0. Config: `configs/duts/mobilint-mla400-aries2-single-c0c0.yaml` |
+| Adapter | `mobilint_aries`, class `MobilintAriesDUT` (`src/sdv_bmt/dut/mobilint/adapter.py`), a subclass of `NativeRealtimeAdapter` (`src/sdv_bmt/dut/native.py`) |
+| Native runner | `sdv-bmt-native-mobilint` = `native/src/common/{loop,runner}.hpp` + `native/src/mobilint/backend.hpp` + `native/src/main_mobilint.cpp`, linked against qbruntime C++ 1.5.0 |
+| Models | YOLOX-Tiny/S/M/L/X: the same ONNX files as the GPU workloads (`artifact_sha256` unchanged), compiled offline by qbcompiler 1.4.1 to int8 `.mxq` files for `aries-rb` |
+| Workloads | `configs/workloads/yolox-{tiny,s,m,l,x}-coco-v1-mla400-q8.yaml`, plus `yolox-s-…-q8-quality.yaml` |
+| Plans | Per model, in `configs/experiments/`: `…-mla400-capture.yaml` (asap, produces the golden), `…-mla400-capture-identity.yaml` (second capture against the golden), `…-mla400-baseline.yaml` (fixed rate, deadline = frame period) |
+| Goldens | `configs/references/*.yolox-*-coco-v1-mla400-q8.npu-capture.golden.jsonl`, in the same format as the GPU goldens (one SHA-256 of the encoded output per item) |
+| Reproduction | `tools/mobilint/README.md`, step by step from the ONNX files to the baseline runs |
+
+The contract of the GPU workloads is kept unchanged: input `yolox-letterbox-bgr-chw{S}-f32/1`, raw output
+`anchors × 85` float32 (anchor-major, `[x, y, log w, log h, obj, 80 classes]`, obj/classes after sigmoid, strides
+8 → 16 → 32), the shared decode/NMS/codec (`native/src/common/yolox_output.hpp`) and COCO bbox AP. Only the
+device part differs.
+
+## 2. Data flow of one request
+
+```
+Python (adapter)                         native runner (backend.hpp)                       qbruntime / NPU
+prepare: backend_spec ─────────────────► prepare: sha256(.mxq) == spec?  Accelerator(dev),
+         (mxq path + sha256,                       ModelConfig single core (cluster, core),
+          cut sha256, options)                     Model(.mxq), launch; map the 9 outputs by shape
+stage (per item, outside timing) ──────► stage: CHW float32 → HWC float32, kept per slot
+                                         ─ MEASURE ─────────────────────────────────────
+                                         submit:  Model::inferAsync(hwc)   ──────────────► quantize, H2D, run, D2H,
+                                         poll:    Future::waitFor(0)       ◄────────────── dequantize (inside the runtime)
+                                         ── t_complete (DUT-service ends here) ──
+                                         collect: Future::get() → 9 float32 tensors
+                                                  host tail: sigmoid(obj, cls), reassemble anchors × 85
+                                                  → shared YOLOX decode + NMS + codec
+                                         ── t_output_ready (output stage ends here) ──
+```
+
+- **DUT-service** = `t_complete − t_submit_begin`. It contains the runtime's input quantization and host→device
+  copy, NPU execution, the device→host copy and dequantization, and the completion poll. qbruntime does all of
+  these inside the request, and they cannot be separated.
+- **Output stage**: `Future::get`, the host tail and the shared decode/NMS/encode. The durations of `get` and of
+  the tail are recorded per request as `mobilint.future_get_ns` and `mobilint.host_tail_ns`.
+- **Not observable** (declared, never estimated):
+  - device-side timing (the `bmt.h2d.*`, `bmt.device_execution_bracket.*` and `bmt.d2h.*` metrics are
+    `not_supported`);
+  - data movement, NPU frequency, thermal state and memory bandwidth during a run;
+  - the split of DUT-service into its steps.
+
+## 3. Problems met and how they were solved
+
+| # | problem | resolution | where |
+|---|---|---|---|
+| P1 | Where to end the compiled graph. The YOLOX head tail (sigmoid on objectness and classes, concat to 85 channels, reshape, concat over strides) puts unbounded box offsets and probabilities in 0..1 into one tensor. One shared 8-bit scale for such a tensor is a known accuracy risk (porting guide, step 3) | The compiled graph ends at the **nine head convolutions** (per stride: box 4, objectness 1, classes 80). This is the last point before outputs with different value ranges are concatenated, and the same cut the Mobilint YOLO tutorial uses. Each output keeps its own scale. The weight-free tail runs on the host in FP32 in `collect()`, in the output stage. The cut graph plus the host tail equals the full ONNX graph in ONNX Runtime up to float rounding. All weights stay on the NPU. Do not move the tail back onto the NPU without an L1 check on the full evaluation set | `tools/mobilint/cut_head.py`, `backend.hpp` collect() |
+| P2 | qbruntime returns the nine outputs in its own order and layout (HWC), not in ONNX output order | Outputs are matched by (grid size, channels) at prepare, never by position. prepare fails if a shape matches no head tensor | `backend.hpp` prepare() |
+| P3 | `inferAsync` returns before the runtime reads the input buffer | Each slot's HWC buffer stays valid and unchanged until its request completes. Input conversion and transfer are therefore inside DUT-service, which is correct by definition | boundary probe; `backend.hpp` stage()/submit() |
+| P4 | Is the output final when `waitFor(0)` first returns true? | Yes: checked on the device by comparing digests of `get()` at the first true poll and later, with interleaved inputs. Completion = first `waitFor(0) == true` | boundary probe |
+| P5 | qbruntime prints lifecycle lines ("Model constructed/launched/disposed") to stdout, which carries the runner's JSON-lines protocol | During prepare and cleanup, stdout is redirected to stderr with `dup2`. The calls on the measured path (`inferAsync`, `waitFor`, `get`) print nothing | `backend.hpp` (stdout guard) |
+| P6 | The reference host has two qbruntime C++ installs: 1.5.0 in `/usr` and 1.1.0 in `/usr/local`, which the compiler and the loader search first | `tools/mobilint/build_native.sh` builds against 1.5.0 through a private symlink directory (`-isystem`, `RUNPATH`). The shared system is not modified. `describe` reports the library actually loaded, and a device test asserts it | `build_native.sh`, `tests/device/test_mobilint_native.py` |
+| P7 | Integration with the shared code | With the agreement of the common-code owner: the adapter is registered in the shared CLI (`DUT_ADAPTERS` in `src/sdv_bmt/cli/main.py`), and `native/Makefile` has an optional target `mobilint`, outside `all` and `portable`, so hosts without qbruntime still build. Adding `native/src/mobilint/` changes the native source-tree digest: rebuild the other runners (`make -C native`) on their hosts after merging | `src/sdv_bmt/cli/main.py`, `native/Makefile` |
+| P8 | The NPU sits on one NUMA node of a two-socket host; the GPU plans pin the harness to the other node | The MLA400 plans pin `realtime.cpu_affinity` to the CPUs of the NPU's NUMA node, found from sysfs/`udevadm` | `configs/experiments/*mla400*` |
+| P9 | The compiled `.mxq` differs on every compile (the header holds a compile time and a build id) | The workload pins the `.mxq` SHA-256, and prepare refuses any other file. A recompile gives bit-identical outputs, so the goldens stay valid, but the workload's `mxq_sha256` must be updated | workloads, `backend.hpp` prepare() |
+| P10 | The replay rate of the GPU family plans is kept for all five models on a single-core DUT | Decision of the reference owner (porting guide step 8). Drops and deadline misses are reported by the metrics, never hidden. A whole-chip configuration (Global8) would be a separate DUT | baseline plans |
+
+## 4. Rules to keep
+
+- **Contract:** `collect()` must deliver the GPU workloads' raw output byte for byte in layout (anchors × 85
+  float32). Do not change the shared decode/NMS/codec or the input preprocessing.
+- **Measured path:** no allocation, logging or Python in submit/poll. The host tail and HWC conversion stay out of
+  DUT-service: HWC at staging, tail in collect.
+- **Vendor code:** Mobilint headers and concepts appear only in `native/src/mobilint/` and `main_mobilint.cpp`.
+  Python keeps Mobilint names in `src/sdv_bmt/dut/mobilint/`, and evidence keys are namespaced `mobilint.`. Never
+  commit Mobilint software, headers, libraries or `.mxq` files.
+- **Identity:** every input is pinned by SHA-256: ONNX artifact, cut ONNX, `.mxq`, dataset index and goldens. When
+  one changes, update the pin and rerun capture → golden → identity.
+- **Not observable means not reported:** do not derive device timing, data movement or clock values from
+  DUT-service.
+- **Single core only:** the adapter refuses other core modes until a Global8 DUT is added as a separate DUT
+  config.
+- **Shared device:** do not start a run while another process holds `/dev/ariesN` open
+  (`tools/mobilint/run_series_mla400.sh` checks this).
+- **No results in the repository** (see the top of this page).
+
+## 5. Where to start
+
+| task | start at |
+|---|---|
+| Rebuild the runner | `make -C native mobilint` (or `tools/mobilint/build_native.sh`), on the NPU host |
+| Recompile a model | `tools/mobilint/cut_head.py` → `make_calib.py` → `compile_head9.sh` → update `mxq_sha256` in the workload |
+| Check numerics after a recompile | `tools/mobilint/validate_numerics.py` (L1, NPU vs ONNX Runtime FP32) |
+| Rerun everything | `tools/mobilint/run_all_mla400.sh` (capture, golden comparison, identity, baselines) |
+| Device tests | `.venv/bin/python -m pytest tests/device/test_mobilint_native.py` (skipped, reported NOT RUN, without the NPU) |
+| Change backend behaviour | `native/src/mobilint/backend.hpp`. Rebuild, rerun the device tests and an identity run |
+
+## 6. Open items
+
+- Shared-code requests:
+  - an `ACTUAL_NOTICE` wording for NPU runs;
+  - add `qbruntime` to the vendor-header boundary test.
+- `describe()` reads the sysfs path `/sys/class/ariesN`; the correct path is `/sys/class/aries/ariesN`. Only
+  descriptive fields are affected. It is to be fixed together with the Global8 DUT.
+- Global8 (whole chip, 8 cores) as a second DUT, if scheduled.

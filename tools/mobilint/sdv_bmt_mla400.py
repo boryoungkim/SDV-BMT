@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""``sdv-bmt`` with the Mobilint adapter registered (porting tool, until the shared CLI registers it).
+"""``sdv-bmt`` from the repository sources (compatibility entry point of the MLA400 scripts).
 
-``src/sdv_bmt/cli/main.py`` (DUT_ADAPTERS) is shared code owned by the common-code maintainer; the request to
-add ``MobilintAriesDUT`` there is pending.  Until then this wrapper adds the adapter to the table at runtime and
-runs the unchanged CLI, so ``run``/``evaluate`` behave exactly as ``sdv-bmt`` does:
+The shared CLI registers the ``mobilint_aries`` adapter (``src/sdv_bmt/cli/main.py``, ``DUT_ADAPTERS``), so this
+is the plain CLI; the ``setdefault`` below is a no-op kept for older checkouts.  The official MLA400 runs were
+made through this entry point, and ``run``/``evaluate`` behave exactly as ``sdv-bmt`` does:
 
     python3 tools/mobilint/sdv_bmt_mla400.py run configs/experiments/yolox-s-mla400-capture.yaml --out runs/...
 """

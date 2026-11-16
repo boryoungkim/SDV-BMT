@@ -93,8 +93,8 @@ Two diagnostics were run outside this directory. Their sources and outputs are i
 | `cut_head.py` | cut at the nine head convolutions, ONNX Runtime check, cut record; `host_tail()` |
 | `compile_head9.sh` | qbcompiler invocation (options of the port) |
 | `validate_numerics.py` | L1 |
-| `build_native.sh` | native runner against qbruntime 1.5.0 |
-| `sdv_bmt_mla400.py` | `sdv-bmt` with the Mobilint adapter registered (until the shared CLI registers it) |
+| `build_native.sh` | native runner against qbruntime 1.5.0 (runs `make -C native mobilint`) |
+| `sdv_bmt_mla400.py` | `sdv-bmt` from the repository sources, used by the scripts (the shared CLI registers the adapter; `sdv-bmt` works the same) |
 | `run_series_mla400.sh` | runs plans with host and NPU state logged (`COMMANDS.log`) |
 | `run_all_mla400.sh` | step 8 in one command |
 | `capture_environment_mla400.sh` | `environment/` of the evidence root |
