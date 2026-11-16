@@ -56,7 +56,52 @@ stage (per item, outside timing) ──────► stage: CHW float32 → HW
   - data movement, NPU frequency, thermal state and memory bandwidth during a run;
   - the split of DUT-service into its steps.
 
-## 3. Problems met and how they were solved
+## 3. Metric support
+
+Status of each metric of the Model-level Metric Set in the MLA400 baseline runs (fixed rate, deadline = frame
+period). This section gives status only, no values. It was checked with catalog v1.1, the default (93 metrics),
+and catalog v1.2 (101 metrics: v1.1 plus 8 `quality.det3d.*`).
+
+| status | v1.1 | v1.2 | meaning |
+|---|---:|---:|---|
+| valid | 76 | 76 | measured and reported |
+| not_supported | 12 | 12 | the device runtime gives no such observation |
+| not_applicable | 5 | 13 | not meaningful for this plan or task, whatever the device (a GPU run with the same plan settings has the same set) |
+
+As on every DUT, percentile metrics over planned requests (`bmt.request_completion.planned.*`) become `censored`
+when dropped requests reach their rank, as the catalog defines.
+
+**Valid (76)**
+
+| group | metrics |
+|---|---|
+| request counts (7) | `bmt.count.{planned,issued,not_issued,completed,dropped,timed_out,error}` |
+| rates (8) | `bmt.offered_rate`, `bmt.achieved_completion_rate`, `bmt.completion_rate`, `bmt.drop_rate`, `bmt.timeout_rate`, `bmt.error_rate`, `bmt.not_issued_rate`, `bmt.censored_fraction` |
+| deadline (5) | `bmt.deadline.{completion,output_ready}_miss_{count,rate}`, `bmt.late_completion_count` |
+| latency distributions (31) | `bmt.{dut_service,submit,post_submit,issue_lag,output_stage,output_ready,request_completion}.{p50,p90,p99,max_observed}`, `bmt.request_completion.planned.{p50,p90,p99}` |
+| output (1) | `bmt.output.identity_rate` (against the NPU golden) |
+| data (6) | `data.item_count`, `data.annotation_coverage`, `data.traceability.complete`, `data.integrity.{payload,prepared_input,annotation}_verified_rate` |
+| 2D detection quality (18) | `quality.detection.coverage`, `quality.detection.conditional.{ap,ap50,ap75,ap_small,ap_medium,ap_large,ar1,ar10,ar100,precision,recall,f1,tp_count,fp_count,fn_count,fp_per_image,fn_per_gt}` |
+
+**Not supported (12)**: `bmt.h2d.*`, `bmt.device_execution_bracket.*` and `bmt.d2h.*` (each `p50`, `p90`, `p99`,
+`max_observed`). qbruntime 1.5.0 performs the transfers and the execution inside the inference request and exposes
+no per-inference device timing. These steps are still inside DUT-service, which is measured. This is the only
+difference from the GPU reference, whose NVIDIA backend reports device-side timing.
+
+**Not applicable (5 in v1.1, 13 in v1.2)**
+
+| metrics | why |
+|---|---|
+| `bmt.closed_loop_completion_rate` | fixed-rate replay, not closed loop |
+| `bmt.required_rate`, `bmt.required_rate_met` | the plans declare no required rate |
+| `quality.segmentation.{coverage,conditional.miou}` | detection workload |
+| `quality.det3d.{coverage,conditional.map,nds,mate,mase,maoe,mave,maae}` (v1.2) | 3D detection (CenterPoint) only |
+
+Capture runs (asap) have more `not_applicable` rate and deadline metrics, as on the GPU. In the bundles, the
+backend also records per-request output-stage observations outside the catalog: `mobilint.future_get_ns` and
+`mobilint.host_tail_ns`.
+
+## 4. Problems met and how they were solved
 
 | # | problem | resolution | where |
 |---|---|---|---|
@@ -71,7 +116,7 @@ stage (per item, outside timing) ──────► stage: CHW float32 → HW
 | P9 | The compiled `.mxq` differs on every compile (the header holds a compile time and a build id) | The workload pins the `.mxq` SHA-256, and prepare refuses any other file. A recompile gives bit-identical outputs, so the goldens stay valid, but the workload's `mxq_sha256` must be updated | workloads, `backend.hpp` prepare() |
 | P10 | The replay rate of the GPU family plans is kept for all five models on a single-core DUT | Decision of the reference owner (porting guide step 8). Drops and deadline misses are reported by the metrics, never hidden. A whole-chip configuration (Global8) would be a separate DUT | baseline plans |
 
-## 4. Rules to keep
+## 5. Rules to keep
 
 - **Contract:** `collect()` must deliver the GPU workloads' raw output byte for byte in layout (anchors × 85
   float32). Do not change the shared decode/NMS/codec or the input preprocessing.
@@ -90,7 +135,7 @@ stage (per item, outside timing) ──────► stage: CHW float32 → HW
   (`tools/mobilint/run_series_mla400.sh` checks this).
 - **No results in the repository** (see the top of this page).
 
-## 5. Where to start
+## 6. Where to start
 
 | task | start at |
 |---|---|
@@ -101,7 +146,7 @@ stage (per item, outside timing) ──────► stage: CHW float32 → HW
 | Device tests | `.venv/bin/python -m pytest tests/device/test_mobilint_native.py` (skipped, reported NOT RUN, without the NPU) |
 | Change backend behaviour | `native/src/mobilint/backend.hpp`. Rebuild, rerun the device tests and an identity run |
 
-## 6. Open items
+## 7. Open items
 
 - Shared-code requests:
   - an `ACTUAL_NOTICE` wording for NPU runs;
