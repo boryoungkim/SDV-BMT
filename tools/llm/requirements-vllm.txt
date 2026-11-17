@@ -1,0 +1,9 @@
+# GPU (vLLM) environment of the SDV-BMT LLM path: Python 3.10, from PyPI. Install file: key pins only
+# (torch 2.13.0 from PyPI is the CUDA 13.0 build); pip resolves the other packages, which can differ from the
+# reference environment. This file has not itself been used to create an environment. Full list of the
+# reference environment: requirements-vllm.lock.txt (see docs/llm_benchmark.md, section 4).
+vllm==0.31.0
+torch==2.13.0
+transformers==5.17.0
+pyarrow==25.0.1
+PyYAML==6.0.3

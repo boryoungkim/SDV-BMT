@@ -216,6 +216,15 @@ measured on one day, so these YOLOX-S timings are not compared with the v0.1.0 r
 ONNX Runtime and the official implementations, the replay-rate rule, operating records and limitations:
 [`docs/results/v0.1.2-gpu-reference-result.md`](docs/results/v0.1.2-gpu-reference-result.md).
 
+## LLM benchmark (unreleased)
+
+A separate Python measurement plane runs Llama 3.2 1B / 3B Instruct and Llama 3.1 8B Instruct on the GPU with vLLM
+and on a FuriosaAI RNGD card with furiosa-llm. The command is `python -m sdv_bmt.llm`. It uses its own bundle
+format and catalog (`sdv-bmt-llm-v1`), and its numbers are not comparable with the Metric Set results above. GPU
+and RNGD results are whole-system results (runtime + driver + device), shown side by side and not attributed to a
+chip. Measurement definitions and reproduction: [`docs/llm_benchmark.md`](docs/llm_benchmark.md). Results:
+[`docs/results/llm-llama3-gpu-rngd-result.md`](docs/results/llm-llama3-gpu-rngd-result.md).
+
 ## Repository layout
 
 | path | content |

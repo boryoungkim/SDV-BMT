@@ -1,0 +1,18 @@
+# LLM speed run: llama-3.1-8b-instruct on rngd-furiosa. RNGD npu:0, furiosa-llm 2026.3, pre-compiled artifact furiosa-ai/Llama-3.1-8B-Instruct tag v2026.3 (BF16 weight/activation/KV).
+# Host paths come from SDV_BMT_MODELS / SDV_BMT_DATASETS / SDV_BMT_CACHE (see docs/llm_benchmark.md).
+schema: sdv-bmt-llm-run/1
+experiment_id: llama-3.1-8b-instruct.rngd-furiosa.speed
+execution_kind: actual
+model:
+  name: llama-3.1-8b-instruct
+  hf_id: meta-llama/Llama-3.1-8B-Instruct
+  revision: 0e9e39f249a16976918f6564b8830bc894c89659
+  tokenizer_path: "${SDV_BMT_MODELS}/llama-3.1-8b-instruct"
+backend:
+  kind: furiosa
+  options: {model: furiosa-ai/Llama-3.1-8B-Instruct, revision: b678d58b0a13c9a4e94e9d235d70b53fe0d8bf32, devices: "npu:0", cache_dir: "${SDV_BMT_CACHE}/furiosa-llm"}
+device: {kind: rngd, name: FuriosaAI RNGD, index: 0}
+workload:
+  kind: speed
+  file: ../speed-s1-s5.tokens.jsonl
+  sha256: e384d49899e7c31655424ef498ee424c364b14754e9a6888a15913503e7c7192

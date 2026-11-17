@@ -10,6 +10,11 @@ monotonic clock) in the realtime run-clock module and in the native-plane
 client, and ``subprocess`` in the native-plane client (it starts the native
 runner process).  No ``ctypes``: vendor libraries are used only by the native
 runner (``native/``), never by the Python package.
+
+LLM track (approved 2026-11-17, "Python LLM measurement path"): the ``llm``
+subpackage is a separate Python measurement plane with its own catalog.  Its
+exceptions are named per module below (``LLM_*``); they apply to no other module
+and leave the Stage 1A / 1R-G rules unchanged.
 """
 
 from __future__ import annotations
@@ -37,6 +42,8 @@ LAYER_MATRIX: dict[str, set[str]] = {
     "runner": {"", "contracts", "observation", "evidence", "runner"},
     "cli": {"", "contracts", "input", "workload", "dut", "stress", "observation",
             "evidence", "metrics", "runner", "cli"},
+    # LLM track: no other layer may import ``llm``
+    "llm": {"contracts", "evidence", "metrics", "llm"},
 }
 
 # Standard-library modules that would leak realtime/async/process/telemetry or
@@ -52,13 +59,33 @@ FORBIDDEN_THIRD_PARTY_PREFIXES = (
     "mlperf", "mlperf_loadgen", "carla", "rclpy", "ros2", "autoware", "furiosa",
 )
 
-YAML_ALLOWED_MODULES = {"sdv_bmt.runner.plan"}
+YAML_ALLOWED_MODULES = {"sdv_bmt.runner.plan", "sdv_bmt.llm.runner"}
 
 # Stage 1R-G: module -> forbidden stdlib modules it may import
 STAGE_1RG_STDLIB_EXCEPTIONS = {
     "sdv_bmt.runner.realtime": {"time"},
     "sdv_bmt.dut.native": {"time", "subprocess"},
 }
+
+# LLM track: module -> forbidden stdlib modules it may import.  The runner times requests with the host
+# monotonic clock and drives the runtimes' asyncio streaming APIs; runner and backends read device state
+# with nvidia-smi / furiosa-smi.
+LLM_STDLIB_EXCEPTIONS = {
+    "sdv_bmt.llm.runner": {"time", "asyncio", "subprocess"},
+    "sdv_bmt.llm.backends": {"asyncio", "subprocess"},
+}
+
+# LLM track: module -> third-party top-level packages it may import.  The vendor runtimes are imported lazily
+# inside the backend functions; the package itself still declares PyYAML as its only dependency.
+LLM_THIRD_PARTY_EXCEPTIONS = {
+    "sdv_bmt.llm.backends": {"vllm", "torch", "prometheus_client", "furiosa_llm", "furiosa", "transformers"},
+    "sdv_bmt.llm.runner": {"transformers"},
+    "sdv_bmt.llm.cli": {"pyarrow", "transformers"},
+}
+
+
+def _llm_third_party_allowed(ref) -> bool:
+    return ref.target.split(".")[0] in LLM_THIRD_PARTY_EXCEPTIONS.get(ref.module, set())
 
 
 @dataclass(frozen=True)
@@ -136,12 +163,13 @@ def _violations() -> list[str]:
             elif dst not in LAYER_MATRIX[src]:
                 out.append(f"{where} (layer '{src or 'root'}' may not import '{dst or 'root'}')")
         elif top in sys.stdlib_module_names:
-            if top in FORBIDDEN_STDLIB and top not in STAGE_1RG_STDLIB_EXCEPTIONS.get(ref.module, set()):
+            allowed = STAGE_1RG_STDLIB_EXCEPTIONS.get(ref.module, set()) | LLM_STDLIB_EXCEPTIONS.get(ref.module, set())
+            if top in FORBIDDEN_STDLIB and top not in allowed:
                 out.append(f"{where} (forbidden stdlib module in the core)")
         elif top == "yaml":
             if ref.module not in YAML_ALLOWED_MODULES:
-                out.append(f"{where} (PyYAML allowed only in runner/plan.py)")
-        else:
+                out.append(f"{where} (PyYAML allowed only in runner/plan.py and llm/runner.py)")
+        elif not _llm_third_party_allowed(ref):
             out.append(f"{where} (third-party import outside the Stage 1A allowlist)")
     return out
 
@@ -159,6 +187,8 @@ def test_contracts_import_only_stdlib_and_contracts():
 
 def test_no_forbidden_third_party_anywhere():
     for ref in collect_imports():
+        if _llm_third_party_allowed(ref):
+            continue
         assert not ref.target.startswith(FORBIDDEN_THIRD_PARTY_PREFIXES), ref
 
 
@@ -176,8 +206,9 @@ def test_component_packages_do_not_import_each_other():
             assert dst in {src, "contracts"}, ref
 
 
-# host clock reads are allowed only where Stage 1R-G needs them; sleeping is never allowed
-HOST_CLOCK_FILES = {SRC_ROOT / "runner" / "realtime.py", SRC_ROOT / "dut" / "native.py"}
+# host clock reads are allowed only where Stage 1R-G and the LLM track need them; sleeping is never allowed
+HOST_CLOCK_FILES = {SRC_ROOT / "runner" / "realtime.py", SRC_ROOT / "dut" / "native.py",
+                    SRC_ROOT / "llm" / "runner.py"}  # LLM track: host-clock request timing
 
 
 def test_no_time_sleep_or_wall_clock_timing_calls():

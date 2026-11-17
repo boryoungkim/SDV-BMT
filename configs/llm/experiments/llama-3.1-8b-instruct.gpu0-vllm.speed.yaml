@@ -1,0 +1,18 @@
+# LLM speed run: llama-3.1-8b-instruct on gpu0-vllm. GPU 0 only, vLLM 0.31.0 tools environment, BF16 weights as distributed.
+# Host paths come from SDV_BMT_MODELS / SDV_BMT_DATASETS / SDV_BMT_CACHE (see docs/llm_benchmark.md).
+schema: sdv-bmt-llm-run/1
+experiment_id: llama-3.1-8b-instruct.gpu0-vllm.speed
+execution_kind: actual
+model:
+  name: llama-3.1-8b-instruct
+  hf_id: meta-llama/Llama-3.1-8B-Instruct
+  revision: 0e9e39f249a16976918f6564b8830bc894c89659
+  tokenizer_path: "${SDV_BMT_MODELS}/llama-3.1-8b-instruct"
+backend:
+  kind: vllm
+  options: {model_path: "${SDV_BMT_MODELS}/llama-3.1-8b-instruct", gpu_memory_utilization: 0.5, max_model_len: 4096, seed: 0}
+device: {kind: gpu, name: NVIDIA RTX PRO 6000 Blackwell, index: 0, selection: CUDA_VISIBLE_DEVICES=0}
+workload:
+  kind: speed
+  file: ../speed-s1-s5.tokens.jsonl
+  sha256: e384d49899e7c31655424ef498ee424c364b14754e9a6888a15913503e7c7192

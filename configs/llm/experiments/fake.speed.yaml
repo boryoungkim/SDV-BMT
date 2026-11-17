@@ -1,0 +1,10 @@
+# Fake backend (no device): tests and CI only. MOCK result.
+schema: sdv-bmt-llm-run/1
+experiment_id: fake.speed
+execution_kind: mock
+model: {name: fake, hf_id: none, revision: none, tokenizer_path: none}
+backend: {kind: fake, options: {tokens_per_item: 1}}
+workload:
+  kind: speed
+  file: ../speed-s1-s5.tokens.jsonl
+  sha256: e384d49899e7c31655424ef498ee424c364b14754e9a6888a15913503e7c7192

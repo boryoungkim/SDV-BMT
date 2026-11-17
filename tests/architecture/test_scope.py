@@ -57,11 +57,18 @@ def test_stage_1rg_scope_is_exactly_the_authorized_additions():
     assert nvidia == ["__init__.py", "adapter.py"]
 
 
+# LLM track (approved 2026-11-17): the vLLM and furiosa-llm streaming APIs are asyncio-based.  In exactly these
+# two files ``async def`` and ``await`` are allowed; every other forbidden identifier is still checked there.
+LLM_ASYNC_FILES = {SRC_ROOT / "llm" / "backends.py", SRC_ROOT / "llm" / "runner.py"}
+LLM_ALLOWED_ASYNC_PATTERN = re.compile(r"\b(async\s+def|await\s)", re.IGNORECASE)
+
+
 def test_no_analysis_or_async_identifiers_in_source():
     offenders = []
     for path in sorted(SRC_ROOT.rglob("*.py")):
         for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-            if FORBIDDEN_IDENTIFIER_PATTERN.search(line):
+            checked = LLM_ALLOWED_ASYNC_PATTERN.sub("", line) if path in LLM_ASYNC_FILES else line
+            if FORBIDDEN_IDENTIFIER_PATTERN.search(checked):
                 offenders.append(f"{path.relative_to(REPO_ROOT)}:{lineno}: {line.strip()}")
     assert offenders == []
 

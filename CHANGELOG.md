@@ -28,6 +28,18 @@ All notable changes to SDV-BMT are recorded here. Versions follow semantic versi
 - **Tools** (offline): `tools/centerpoint/` (official info files and reference run, nuScenes input builder, model
   re-definition, ONNX export, plan converter, numeric gate, output-twin and evaluator cross-checks, cuDNN table pinning,
   experiment generator).
+- **LLM path (Python measurement plane)**, `python -m sdv_bmt.llm`. It runs Llama 3.2 1B / 3B Instruct and
+  Llama 3.1 8B Instruct on a GPU with vLLM and on a FuriosaAI RNGD card with furiosa-llm. Requests are
+  pre-tokenized and sent one at a time. TTFT, TPOT and E2E are taken from host monotonic times of the runtime's
+  stream. Two workloads are fixed: S1–S5 fixed-length synthetic token IDs, and MMLU with 1,000 items (zero-shot,
+  generation-based). Prefix caching off and greedy decoding are verified from the values the runtime reports.
+  Results go into their own bundle format (`sdv-bmt-llm-bundle/1`) and are evaluated from the bundle only with the
+  new catalog `sdv-bmt-llm-v1`. The CNN Metric Sets are unchanged. Tools are in `tools/llm/` (RNGD build and smoke,
+  baseline script, prefix-cache control, tokenizer and weight identity checks, GPU vs Hugging Face check,
+  independent MMLU re-scorer) together with the package lists of the two measurement environments. Documentation:
+  `docs/llm_benchmark.md`. Results: `docs/results/llm-llama3-gpu-rngd-result.md`. The architecture tests name the
+  LLM package's exceptions per module (host clock and asyncio in `llm/runner.py`, asyncio and lazily imported
+  runtimes in `llm/backends.py`); the rules for all other packages are unchanged.
 
 ## [0.1.2] — 2026-11-10
 
