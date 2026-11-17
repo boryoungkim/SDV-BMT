@@ -11,7 +11,9 @@ All notable changes to SDV-BMT are recorded here. Versions follow semantic versi
   voxelization are built offline (pillar tensor payloads), the device runs pillar features, BEV scatter, backbone,
   neck and head, and decode + circle NMS + encode (`centerpoint-det3d-f32/1`) run in the native output stage with a
   byte-identical Python twin. A NaN heatmap logit, or a detection value that does not fit float32, is an output error
-  in both.
+  in both. Results: `docs/results/centerpoint-pillars-gpu-reference-result.md`; README and `docs/roadmap.md` describe
+  CenterPoint, run series and the LLM path; `THIRD_PARTY_NOTICES.md` lists the checkpoint, nuScenes and the tools'
+  packages.
 - **Native cuDNN plan operations** for CenterPoint: pillar feature net, pillar scatter, zero fill and depth-to-space,
   in a third NVRTC source compiled only when a plan uses it.
 - **Model-level Metric Set v1.2** (`sdv-bmt-model-metric-set-v1.2`, selectable; the default stays v1.1): v1.1 plus

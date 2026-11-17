@@ -11,6 +11,10 @@ first *reference accelerator*: v0.1.0 with YOLOX-S, v0.1.2 with eight reference 
 COCO, three DeepLabV3+ segmenters on Cityscapes). GPU results are not NPU results, are not a GPU ranking, and predict nothing about
 NPU timing.
 
+Since v0.1.2 the `main` branch also has, not yet released: a ninth reference model, CenterPoint-Pillars (3D
+detection on nuScenes LiDAR), together with *run series* for evaluation sets too large for one run, and a separate
+LLM path that runs Llama 3 on the GPU and on a FuriosaAI RNGD card ([LLM benchmark](#llm-benchmark-unreleased)).
+
 ## Research question
 
 > Can a Model-level benchmark distinguish the planned configuration from the realized execution conditions,
@@ -50,13 +54,14 @@ Python evaluation plane         Model-level Metric Set v1.1, task quality, Desig
 Catalog `sdv-bmt-model-metric-set-v1.1` (default since v0.1.2): the 91 metrics of Metric Set v1
 (`sdv-bmt-model-metric-set-v1`, still selectable) plus two segmentation-quality metrics, computed by
 `sdv-bmt evaluate` from a bundle. Every result carries its layer and its population (planned / completed /
-sample count, coverage).
+sample count, coverage). Metric Set v1.2 (`sdv-bmt-model-metric-set-v1.2`, unreleased, selected with `--catalog`)
+is v1.1 plus eight nuScenes 3D-detection metrics; the default stays v1.1.
 
 | layer | metrics (examples) |
 |---|---|
 | performance | `bmt.request_completion.*`, `bmt.dut_service.*`, `bmt.output_ready.*` (p50 / p90 / p99 / `max_observed`), `bmt.offered_rate`, `bmt.achieved_completion_rate`, `bmt.closed_loop_completion_rate`, state counts and rates |
 | timeliness | `bmt.deadline.{completion,output_ready}_miss_{count,rate}`, `bmt.required_rate`, `bmt.required_rate_met` |
-| task quality | detection: `quality.detection.coverage`, `quality.detection.conditional.{ap, ap50, ap75, ap_small, ap_medium, ap_large, ar1, ar10, ar100, precision, recall, f1, tp_count, fp_count, fn_count, fp_per_image, fn_per_gt}`; segmentation (v1.1): `quality.segmentation.coverage`, `quality.segmentation.conditional.miou` |
+| task quality | detection: `quality.detection.coverage`, `quality.detection.conditional.{ap, ap50, ap75, ap_small, ap_medium, ap_large, ar1, ar10, ar100, precision, recall, f1, tp_count, fp_count, fn_count, fp_per_image, fn_per_gt}`; segmentation (v1.1): `quality.segmentation.coverage`, `quality.segmentation.conditional.miou`; 3D detection (v1.2): `quality.det3d.coverage`, `quality.det3d.conditional.{map, nds, mate, mase, maoe, mave, maae}` |
 | diagnostics | `bmt.issue_lag.*`, `bmt.submit.*`, `bmt.post_submit.*`, `bmt.output_stage.*`, `bmt.h2d.*`, `bmt.device_execution_bracket.*`, `bmt.d2h.*`, `bmt.output.identity_rate` |
 | validity / evidence | `data.item_count`, `data.annotation_coverage`, `data.integrity.*_verified_rate`, `data.traceability.complete` |
 
@@ -75,6 +80,12 @@ diagnostic, not accuracy. Definitions: [`docs/metrics_catalog.md`](docs/metrics_
   measurement boundary and one realization-evidence record per realized condition (`observed`,
   `self_reported`, `virtual`, `not_observable`, `not_applicable`).
 - Evaluation never modifies raw files and writes a new `evaluations/<eval_id>/`.
+- A *run series* (unreleased) runs one dataset selection as consecutive ordinary runs (parts). A part never splits
+  a block of items that share the same metadata value (for nuScenes, a scene), and `series.json` records the parts.
+  `sdv-bmt evaluate SERIES_DIR` checks that the parts differ only in their selection and produces one result:
+  counts summed, distributions over all requests, rates over the sum of the parts' measurement windows, task
+  quality evaluated once over all items. The series is valid only if every part is valid. A series takes no output
+  reference and one repetition.
 - `evaluate_contrast_validity` checks a pair of runs with three guards: **Design** (only the intended factor
   varied), **Realization** (the fixed conditions were realized equivalently, as far as observed), and
   **Measurement** (same boundary, catalog, protocol and evaluator). Missing evidence is never equivalence; a
@@ -84,7 +95,7 @@ diagnostic, not accuracy. Definitions: [`docs/metrics_catalog.md`](docs/metrics_
 Details: [`docs/architecture.md`](docs/architecture.md), [`docs/measurement_protocol.md`](docs/measurement_protocol.md),
 [`docs/evidence.md`](docs/evidence.md) (Korean).
 
-## Reference implementation in v0.1.2
+## Reference implementation (v0.1.2, plus unreleased additions on `main`)
 
 | part | status |
 |---|---|
@@ -93,6 +104,7 @@ Details: [`docs/architecture.md`](docs/architecture.md), [`docs/measurement_prot
 | NVIDIA backend | ACTUAL on one reference GPU (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition): CUDA 13.0 (headers, NVRTC, driver API, NVML), cuDNN 9.1 plan executor with a pinned algorithm table, CUDA event brackets, optional Nsight Systems cross-check |
 | detection workloads | YOLOX-Tiny (416 × 416), S, M, L, X (official ONNX, converted offline to cuDNN plans) on the first 1,000 COCO val2017 images; COCO bbox quality |
 | segmentation workloads (v0.1.2) | DeepLabV3+ R-18, R-50, R-101 (mmsegmentation Cityscapes checkpoints, exported to ONNX and converted offline to cuDNN plans) on the 500 Cityscapes val images at 2048 × 1024; Cityscapes 19-class mIoU |
+| 3D detection workload (unreleased) | CenterPoint-Pillars (mmdetection3d nuScenes checkpoint, pillar 0.2 m, circle NMS; exported to ONNX and converted offline to a cuDNN plan) on nuScenes LiDAR: the 162 samples of the four official-val scenes in v1.0-mini, and all 6,019 val samples as a run series; nuScenes mAP / NDS. The 10-sweep point cloud and the pillar voxelization are built offline, outside the measured path |
 | all workloads | FP32, batch 1, N = 1 |
 
 Before a run starts, the runner rejects a plan whose fixed-rate deadline does not follow its rate, an input whose
@@ -133,8 +145,8 @@ evaluations and `--catalog bmt-portable-v1-stage1a` those of the earlier Stage 1
 
 The NVIDIA build expects CUDA 13.0 in `/usr/local/cuda-13.0` and cuDNN 9 from the pip package
 `nvidia-cudnn-cu12`; override with `make -C native CUDA_HOME=... CUDNN_ROOT=...`. Tests that need the local COCO
-subset or the Cityscapes val set, the model files or local evidence bundles skip as NOT RUN when those are
-absent.
+subset, the Cityscapes val set or the nuScenes inputs, the model files or local evidence bundles skip as NOT RUN
+when those are absent.
 
 ## Reproducing the GPU reference result
 
@@ -177,6 +189,20 @@ JPEG decoder can produce different pixels and therefore a different digest, whic
   build the val input with `tools/deeplab_family/build_cityscapes_val.py`. Then run
   `configs/experiments/deeplabv3plus-<model>-baseline.yaml` (2 Hz). Each tool's module docstring gives its exact
   command line.
+- **CenterPoint-Pillars (unreleased)**: download the mmdetection3d checkpoint
+  `centerpoint_02pillar_second_secfpn_circlenms_4x8_cyclic_20e_nus_20220811_031844-191a3822.pth` (24,154,629 bytes,
+  SHA-256 `191a38226d2ce990f26cc3f78c454310cc562d81d29e86d8ca8fa39c0a44215d`) from
+  `https://download.openmmlab.com/mmdetection3d/v1.0.0_models/centerpoint/centerpoint_02pillar_second_secfpn_circlenms_4x8_cyclic_20e_nus/`.
+  nuScenes requires a registered account (CC BY-NC-SA 4.0 and the nuScenes terms of use) and may not be
+  redistributed: download v1.0-mini, and for the full val set the v1.0-trainval metadata and LiDAR archives,
+  yourself. Build the input with `tools/centerpoint/build_nuscenes_input.py` (numpy and pyquaternion; for the full
+  val set first `tools/centerpoint/extract_nuscenes_val.py`, which needs nuscenes-devkit), export with
+  `tools/centerpoint/export_onnx.py` (PyTorch and onnx, offline only; the reference export used PyTorch 2.4.1, and
+  other versions can produce a different file) and convert with `tools/centerpoint/build_centerpoint_plan.py`. Then
+  run `configs/experiments/centerpoint-pillar02-mini-baseline.yaml` (20 Hz) or the run series
+  `configs/experiments/centerpoint-pillar02-val-series.yaml`, and evaluate with
+  `--catalog sdv-bmt-model-metric-set-v1.2` to get the 3D-detection metrics. Each tool's module docstring gives its
+  exact command line.
 - Set your GPU's UUID in the model's `configs/duts/nvidia-rtx-pro-6000-gpu0-cudnn-<model>.yaml` as in step 4.
   The configurations pin the plan, the weights and the input index by SHA-256, so a different file is rejected
   before the run.
@@ -216,6 +242,25 @@ measured on one day, so these YOLOX-S timings are not compared with the v0.1.0 r
 ONNX Runtime and the official implementations, the replay-rate rule, operating records and limitations:
 [`docs/results/v0.1.2-gpu-reference-result.md`](docs/results/v0.1.2-gpu-reference-result.md).
 
+## CenterPoint-Pillars (unreleased)
+
+Same GPU, FP32, batch 1, N = 1, fixed rate 20 Hz (the LiDAR sweep rate), deadline 50 ms. The measured path runs from
+the pillar input to the decoded 3D detections; the 10-sweep merge and the voxelization are built offline.
+
+| scope | runs | DUT-service p50 (ms) | DUT-service max_observed (ms) | quality |
+|---|---|---:|---:|---|
+| nuScenes v1.0-mini, the four official-val scenes (162 samples) | 5 runs (min–max) | 10.42–10.45 | 10.54–10.64 | mAP 0.536228 / NDS 0.585987 |
+| nuScenes val (6,019 samples) | 1 run series, 7 parts | 10.34 | 10.79 | mAP 0.480113 / NDS 0.584944 |
+
+Every run completed all requests with no drops, timeouts, errors or deadline misses, and the mini runs' outputs were
+byte-identical to the golden capture. The official mmdetection3d implementation on the same samples (CPU, the nine
+nearest sweeps) gives mAP 0.536228 / NDS 0.585986 on mini and 0.480101 / 0.584938 on val. The mini and val scores
+are not compared with each other, because the four mini scenes have a skewed class mix. The model zoo's published
+mAP 48.70 / NDS 59.62 already differ for the official re-run; one known cause is that the official configuration
+draws nine of the ten sweeps at random, which SDV-BMT fixes to the nine nearest. Numeric checks, the replay-rate
+rule, the run-series details and limitations:
+[`docs/results/centerpoint-pillars-gpu-reference-result.md`](docs/results/centerpoint-pillars-gpu-reference-result.md).
+
 ## LLM benchmark (unreleased)
 
 A separate Python measurement plane runs Llama 3.2 1B / 3B Instruct and Llama 3.1 8B Instruct on the GPU with vLLM
@@ -241,7 +286,9 @@ chip. Measurement definitions and reproduction: [`docs/llm_benchmark.md`](docs/l
 
 v0.1.0 covers the deterministic core, the native realtime harness, the NVIDIA GPU reference backend, the real
 YOLOX-S / COCO baseline and Model-level Metric Set v1. v0.1.2 adds the YOLOX family, DeepLabV3+ segmentation on
-Cityscapes and Metric Set v1.1 on the same GPU reference track. Planned next, each behind its own review gate: NPU SDK
+Cityscapes and Metric Set v1.1 on the same GPU reference track. After v0.1.2, `main` adds (unreleased)
+CenterPoint-Pillars on nuScenes LiDAR with run series and Metric Set v1.2, and the LLM path (Llama 3 on the GPU with
+vLLM and on a FuriosaAI RNGD card with furiosa-llm; whole-system results). Planned next, each behind its own review gate: NPU SDK
 and observability investigation (Stage 2a-N), NPU realtime harness (1R-N) and NPU baseline (2b-N); later the
 Driving Scenario stage, hardware stress, and the Scenario × Stress matrix.
 
