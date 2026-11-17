@@ -15,7 +15,7 @@ COLS = [("dut p50", "bmt.dut_service.p50", 1e6), ("dut p99", "bmt.dut_service.p9
         ("out_ready max", "bmt.output_ready.max_observed", 1e6),
         ("rate/s", "bmt.achieved_completion_rate", 1), ("drop", "bmt.drop_rate", 1),
         ("miss(out_ready)", "bmt.deadline.output_ready_miss_rate", 1), ("identity", "bmt.output.identity_rate", 1),
-        ("AP", "quality.detection.conditional.AP", 1)]
+        ("AP", "quality.detection.conditional.ap", 1)]
 
 
 def load(path):
@@ -34,7 +34,7 @@ def main():
     rows = []
     for stage in ("capture", "baseline"):
         ev = root / stage / "evaluations"
-        for run_dir in sorted((root / stage).glob("*/run-*")):
+        for run_dir in sorted(d for d in (root / stage).glob("*/run-*") if d.is_dir()):
             f = ev / f"{run_dir.name}.json"
             if not f.exists():
                 print(f"missing evaluation for {run_dir}", file=sys.stderr)
