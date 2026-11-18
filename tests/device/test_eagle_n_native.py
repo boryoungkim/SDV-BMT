@@ -14,10 +14,10 @@ def test_eagle_n_native_describe_loads_real_executor():
     data=json.loads(r.stdout.strip().splitlines()[-1]);assert not data['mock'] and data['accelerator_family']=='NPU' and data['eagle_n.device_id']==0
 
 @pytest.mark.skipif(os.environ.get('SDV_BMT_EAGLE_N_DEVICE_TESTS')!='1',reason='NOT RUN: new C++ modules/stages/full model not yet qualified on device; no automatic NPU access')
-@pytest.mark.parametrize('variant',['r18','r50'])
-def test_native_model_qualification_matches_current_artifacts(variant):
+@pytest.mark.parametrize('workload',['deeplabv3plus-r18-cityscapes-v1-eagle-n','deeplabv3plus-r50-cityscapes-v1-eagle-n-bf16','deeplabv3plus-r101-cityscapes-v1-eagle-n-bf16'])
+def test_native_model_qualification_matches_current_artifacts(workload):
     import hashlib,yaml
-    work=yaml.safe_load((ROOT/f'configs/workloads/deeplabv3plus-{variant}-cityscapes-v1-eagle-n.yaml').read_text())
+    work=yaml.safe_load((ROOT/f'configs/workloads/{workload}.yaml').read_text())
     p=work['options']['device_program'];q=Path(p['qualification'])
     assert q.is_file(),'Complete native module/stage/full gates before enabling this test; standalone Python is not a native receipt'
     d=json.loads(q.read_text());assert d['passed']
