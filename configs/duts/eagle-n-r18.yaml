@@ -8,7 +8,7 @@ max_inflight: 1
 runtime_options:
   device_id: 0
   executor: /opt/sdv_assets/eagle_n/eagle_n_integration_assets/libeagle_n_ttnn.so
-  executor_sha256: e5dab549dacae2e83d05f4592b03af3a57844eebca0ef185a33363be2ffdd6a1
+  executor_sha256: ff62435bb0a40d2d02493d17f811ad02048b6cc60452ee986c24e7504d1210a6
   executor_source_sha256: 90fd92cd138441bb41863648dbad962dc212c64cc9380dc66b42bcdec5780805
   lock_path: /opt/sdv_assets/eagle_n/eagle_n_integration_assets/device0.lock
   trace_region_bytes: 67108864

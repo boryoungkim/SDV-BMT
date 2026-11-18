@@ -37,4 +37,4 @@ options:
     compile_record: /opt/sdv_assets/eagle_n/eagle_n_integration_assets/r18/compile_record.json
     compile_record_sha256: c1d65028b661070fa14a017b457740e7e56bd0341845173420805ffeb5ce9f9e
     qualification: /opt/sdv_assets/eagle_n/eagle_n_integration_assets/r18/native_qualification.json
-    qualification_sha256: null
+    qualification_sha256: 2d972ee42e4524b3cf8521f0a3762ec0208940b0dda7f58f9900558b12ce7abf
