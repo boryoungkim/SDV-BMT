@@ -302,6 +302,7 @@ MS = 1_000_000
 LEGACY_CATALOG = "bmt-portable-v1-stage1a"
 METRIC_SET_V1 = "sdv-bmt-model-metric-set-v1"
 METRIC_SET_V1_1 = "sdv-bmt-model-metric-set-v1.1"  # v0.1.2 default catalog (v1 + segmentation quality)
+METRIC_SET_V1_2 = "sdv-bmt-model-metric-set-v1.2"  # v1.1 + 3D detection quality (CenterPoint-Pillars)
 
 
 def evaluate(run_dir: Path, eval_id: str = "eval-test-0", override=None, catalog: str = LEGACY_CATALOG):

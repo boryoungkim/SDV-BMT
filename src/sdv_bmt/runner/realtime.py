@@ -27,6 +27,11 @@ from ..observation.recorder import EVENTS_FILE
 CLOCK_SOURCE = "CLOCK_MONOTONIC"
 
 
+def host_monotonic_ns() -> int:
+    """Host ``CLOCK_MONOTONIC`` ns (run series: the time between parts, measured by the sdv-bmt process)."""
+    return time.monotonic_ns()
+
+
 class MonotonicRunClock:
     """Run clock: ``CLOCK_MONOTONIC`` ns minus an anchor taken at run start.
 

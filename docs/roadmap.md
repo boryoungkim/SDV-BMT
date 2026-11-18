@@ -13,6 +13,7 @@ Stage 2b-G GPU dataset baseline / measurement validation ── 측정 시스템
    └─ 계속: 실제 model + dataset baseline(YOLOX-S, COCO val2017 1,000장, cuDNN) ── 보고 완료(2026-10-08)
    └─ Model-level Metric Set v1 구현 + canonical GPU metric report ── 승인(2026-10-08), 구현 완료(v0.1.0)
    └─ model 확장: YOLOX Tiny/S/M/L/X(COCO), DeepLabV3+ R-18/50/101(Cityscapes), Metric Set v1.1 ── 완료(v0.1.2, 2026-11-10)
+   └─ model 확장: CenterPoint-Pillars(nuScenes LiDAR 3D 검출), run series, Metric Set v1.2 ── 완료(main, release 전, 2026-11-16)
    │
    └── GPU track은 아직 닫히지 않았다. Stage 2a-N은 실제 model baseline 검토 전까지 시작하지 않는다
             ▼
@@ -24,6 +25,10 @@ Stage 6  second workload/accelerator (선택)      Phase 2 System-level design (
 ```
 
 GPU track 결과는 측정 시스템 검증(`reference_accelerator_validation`)이다. GPU 결과는 NPU timing, memory-path 가시성, stress 관측 가능성, 전처리 동등성, queue 의미, profiler 유효성을 입증하지 않는다. 이것들은 Stage 2a-N → 1R-N → 2b-N에서 다시 확인해야 한다.
+
+**CenterPoint와 run series (main, release 전, 2026-11-16).** 9번째 reference model로 CenterPoint-Pillars(nuScenes LiDAR)를 같은 GPU track에 추가했다. 측정 경계는 "pillar 입력 → 3D 검출 결과"이고, 10-sweep 병합과 voxelization은 offline에서 만든다. val 전체(6,019개)는 한 run의 입력 staging에 다 들어가지 않으므로 run series(장면 경계를 자르지 않는 여러 보통 run을 하나의 결과로 평가)로 실행한다. 3D 검출 품질은 Metric Set v1.2(선택)에 있고 기본 catalog는 v1.1로 남는다.
+
+**LLM 경로 (main, release 전, 2026-11-17).** 위 stage 흐름과 별도로, Llama 3.2 1B / 3B Instruct와 Llama 3.1 8B Instruct를 GPU(vLLM)와 FuriosaAI RNGD 카드(furiosa-llm)에서 재는 Python 측정면을 추가했다. 자체 bundle 형식과 catalog(`sdv-bmt-llm-v1`)를 쓰며 CNN·LiDAR Metric Set 결과와 비교하지 않는다. GPU와 RNGD 결과는 시스템 단위(runtime + driver + 장치) 결과를 나란히 보인 것이고 칩에 귀속하지 않는다. CNN·LiDAR 경로의 NPU track(Stage 2a-N → 1R-N → 2b-N)을 시작한 것은 아니다. 정의와 재현: [`docs/llm_benchmark.md`](llm_benchmark.md).
 
 ## Stage 1A가 남긴 것 (재사용 대상)
 

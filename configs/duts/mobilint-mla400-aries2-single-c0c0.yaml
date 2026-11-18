@@ -1,0 +1,13 @@
+# YOLOX NPU port (ACTUAL): Mobilint MLA400, chip /dev/aries2 (first ARIES chip of the MLA400 card on this host),
+# single-core mode pinned to Cluster0/Core0, qbruntime 1.5.0 asynchronous pipeline (native runner
+# sdv-bmt-native-mobilint). Single-core mode is the simplest configuration of the chip; the same DUT configuration
+# serves the five YOLOX models (the compiled model is part of the workload).
+schema_version: 1
+dut_config_id: mobilint-mla400-aries2-single-c0c0
+adapter: mobilint_aries
+device: /dev/aries2
+max_inflight: 1
+runtime_options:
+  core_mode: single
+  cluster: 0
+  core: 0

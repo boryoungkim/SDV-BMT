@@ -195,6 +195,8 @@ class ResolvedPlan:
             },
             # Stage 1R realtime plans only, so Stage 1A plan digests are unchanged
             **({"realtime": plan.realtime} if plan.realtime is not None else {}),
+            # run series plans only, so the digests of single-run plans are unchanged
+            **({"series": plan.series} if plan.series is not None else {}),
         }
 
     @property
@@ -342,6 +344,13 @@ def validate_plan(rp: ResolvedPlan) -> list[str]:
         if plan.realtime is None:
             issues.append("workload.quality_evaluator: task quality is out of Stage 1A (virtual runner) scope; "
                           "a frozen quality reference needs a realtime (v5) bundle")
+    if plan.series is not None:
+        if rp.input_spec.input_kind is not InputKind.DATASET:
+            issues.append("series: a run series splits a dataset selection; the input is not a dataset")
+        if plan.repetitions != 1:
+            issues.append("series: a run series is one execution of the experiment; repetitions must be 1")
+        if plan.evaluation.output_reference.kind is not ReferenceKind.NONE:
+            issues.append("series: an output reference is not supported in a run series (minimal series)")
     level = plan.stress.level
     if level != NOMINAL_LEVEL and level not in rp.stress_spec.levels:
         issues.append(

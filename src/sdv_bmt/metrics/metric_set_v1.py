@@ -22,24 +22,28 @@ percentiles treat every non-completed planned request as +inf and are ``censored
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 from fractions import Fraction
 from typing import Any, Optional
 
-from ..contracts.ids import sha256_hex
-from ..contracts.quality import CITYSCAPES_SEMSEG_MIOU_V1
-from ..contracts.records import METRIC_CATALOG_VERSION, METRIC_CATALOG_VERSION_V1, MetricSetResult
+from ..contracts.ids import digest_of, sha256_hex
+from ..contracts.quality import CITYSCAPES_SEMSEG_MIOU_V1, NUSCENES_DET3D_V1
+from ..contracts.records import (METRIC_CATALOG_VERSION, METRIC_CATALOG_VERSION_V1, METRIC_CATALOG_VERSION_V1_2,
+                                MetricSetResult)
 from ..contracts.status import MetricLayer, MetricStatus, ReplayMode, RequestState
 from ..observation.reader import RunBundle, read_output_blob
 from .catalog import P99_MIN_SAMPLES, PERCENTILE_METHOD, PERCENTILES
-from .identity import output_identity
+from .identity import IdentityResult, output_identity
 from .portable import INF, Computed, maximum, per_second, percentile, planned_percentile, rate, ratio
 from .quality_detection import DetectionQuality, detection_quality
+from .quality_det3d import Det3DQuality, det3d_quality, det3d_quality_parts
 from .quality_segmentation import SegmentationQuality, segmentation_quality
 
 # Metric Set v1 (frozen) and v1.1 (v0.1.2: v1 unchanged + the two segmentation quality metrics, approved 2026-11-06)
 CATALOG_VERSION = METRIC_CATALOG_VERSION  # v1.1, the default catalog of new evaluations
 CATALOG_VERSION_V1 = METRIC_CATALOG_VERSION_V1
+CATALOG_VERSION_V1_2 = METRIC_CATALOG_VERSION_V1_2  # v1.1 + 3D detection quality (CenterPoint-Pillars)
 S = RequestState
 L = MetricLayer
 
@@ -226,9 +230,35 @@ SEGMENTATION_METRICS: tuple[MetricSpec, ...] = (
                "in the bundle"),
 )
 METRICS_V1_1: tuple[MetricSpec, ...] = METRICS + SEGMENTATION_METRICS
-CATALOG_METRICS = {CATALOG_VERSION_V1: METRICS, CATALOG_VERSION: METRICS_V1_1}
-BY_ID = {m.metric_id: m for m in METRICS_V1_1}
-assert len(BY_ID) == len(METRICS_V1_1)
+_DET3D_POP = ("conditional population (items of COMPLETED requests with a valid task output); ground truth frozen in "
+              "the bundle; nuScenes devkit detection_cvpr_2019 definition")
+DET3D_METRICS: tuple[MetricSpec, ...] = (
+    MetricSpec("quality.det3d.coverage", L.TASK_QUALITY, "ratio",
+               "3D-detection-evaluated planned items / planned requests (items of COMPLETED requests with a valid task "
+               "output and a frozen ground truth)"),
+    MetricSpec("quality.det3d.conditional.map", L.TASK_QUALITY, "ratio",
+               "nuScenes mean average precision: per class the mean over center-distance thresholds 0.5/1/2/4 m of the "
+               "AP (precision above 0.1 for recall above 0.1), mean over the 10 classes; " + _DET3D_POP),
+    MetricSpec("quality.det3d.conditional.nds", L.TASK_QUALITY, "ratio",
+               "nuScenes detection score: (5 mAP + sum of max(0, 1 - mTP error) over the 5 true-positive errors) / 10; "
+               + _DET3D_POP),
+    MetricSpec("quality.det3d.conditional.mate", L.TASK_QUALITY, "m",
+               "mean translation error (planar center distance) of true positives at 2 m, mean over classes; " + _DET3D_POP),
+    MetricSpec("quality.det3d.conditional.mase", L.TASK_QUALITY, "ratio",
+               "mean scale error (1 - aligned 3D IoU) of true positives at 2 m, mean over classes; " + _DET3D_POP),
+    MetricSpec("quality.det3d.conditional.maoe", L.TASK_QUALITY, "rad",
+               "mean orientation error (yaw difference; period pi for barrier) of true positives at 2 m, mean over the "
+               "classes that define it; " + _DET3D_POP),
+    MetricSpec("quality.det3d.conditional.mave", L.TASK_QUALITY, "m/s",
+               "mean planar velocity error of true positives at 2 m, mean over the classes that define it; " + _DET3D_POP),
+    MetricSpec("quality.det3d.conditional.maae", L.TASK_QUALITY, "ratio",
+               "mean attribute error (1 - attribute accuracy) of true positives at 2 m, mean over the classes that "
+               "define it; " + _DET3D_POP),
+)
+METRICS_V1_2: tuple[MetricSpec, ...] = METRICS_V1_1 + DET3D_METRICS
+CATALOG_METRICS = {CATALOG_VERSION_V1: METRICS, CATALOG_VERSION: METRICS_V1_1, CATALOG_VERSION_V1_2: METRICS_V1_2}
+BY_ID = {m.metric_id: m for m in METRICS_V1_2}
+assert len(BY_ID) == len(METRICS_V1_2)
 
 
 def _requests_population(name: str, sample: int, counts: dict[str, int]) -> dict[str, Any]:
@@ -237,18 +267,78 @@ def _requests_population(name: str, sample: int, counts: dict[str, int]) -> dict
             "coverage": ratio(sample, planned) if planned else None}
 
 
+@dataclass(frozen=True)
+class MeasuredPart:
+    """One measured run: a single run (label None) or one part of a run series (label "part-NN")."""
+    bundle: RunBundle
+    folded: dict
+    counts: dict[str, int]
+    window: Any
+    label: Optional[str] = None
+
+
 def compute_metric_set_v1(bundle: RunBundle, folded: dict, counts: dict[str, int], window: Any,
                           params: dict[str, Any], eval_id: str, kind: Any, boundary_id: str,
                           clock_notes: dict[str, str], catalog: str = CATALOG_VERSION_V1) -> list[MetricSetResult]:
     """All Metric Set v1 (or v1.1) results of a bundle whose measurement is valid (run-level gates are applied by
     the evaluator before this is called).  ``catalog`` v1 computes exactly the frozen v1 results; v1.1 adds the
     segmentation quality metrics, and a segmentation evaluator makes the detection quality metrics not_applicable."""
+    return compute_metric_set_parts([MeasuredPart(bundle, folded, counts, window)], params, eval_id, kind,
+                                    boundary_id, clock_notes, catalog)
+
+
+def _series_quality_stub(cls: Any, evaluator: Optional[str]) -> Any:
+    return cls(MetricStatus.NOT_SUPPORTED, f"series_quality_not_implemented:{evaluator}", (
+        "the minimal run series evaluates the quality of the nuScenes 3D detection evaluator only",))
+
+
+def _reference_check(parts: list[MeasuredPart]) -> Optional[tuple[int, int]]:
+    """(verified rows, input items) of the frozen ground truth over all parts; None when a part has none."""
+    verified = total = 0
+    for p in parts:
+        rows = p.bundle.quality_reference
+        if rows is None:
+            return None
+        by_index = {item.item_index: item for item in p.bundle.input_items}
+        verified += sum(1 for row in rows if (item := by_index.get(row.item_index)) is not None
+                        and row.source_item_id == item.source_item_id
+                        and row.annotation_digest == item.annotation_digest
+                        and digest_of(row.annotation) == row.annotation_digest)
+        total += len(p.bundle.input_items)
+    return verified, total
+
+
+def compute_metric_set_parts(parts: list[MeasuredPart], params: dict[str, Any], eval_id: str, kind: Any,
+                             boundary_id: str, clock_notes: dict[str, str],
+                             catalog: str = CATALOG_VERSION_V1) -> list[MetricSetResult]:
+    """Metric Set results of one run (one part) or of a run series (its parts, all measurement-valid and of one
+    identity, checked by the caller).  A series is one population: counts are summed, per-request distributions
+    are taken over the requests of all parts, rates divide by the sum of the parts' windows (the time between parts
+    is not part of any window), and task quality is evaluated once over the items of all parts."""
+    single = len(parts) == 1
+    first = parts[0].bundle
+    counts = parts[0].counts if single else {k: sum(p.counts[k] for p in parts) for k in parts[0].counts}
     planned = counts["planned"]
-    entries = list(folded.values())
-    t_sched = [r.t_sched for r, _ in entries]
-    t0 = t_sched[0] if t_sched else window.t_measure_begin
-    win = {"t_measure_begin_ns": window.t_measure_begin, "t0_ns": t0, "t_drain_end_ns": window.t_drain_end,
-           "drain_cap_reached": window.drain_cap_reached}
+    entries = [e for p in parts for e in p.folded.values()]
+
+    def part_t_sched(p: MeasuredPart) -> list[int]:
+        return [r.t_sched for r, _ in p.folded.values()]
+
+    def part_t0(p: MeasuredPart) -> int:
+        ts = part_t_sched(p)
+        return ts[0] if ts else p.window.t_measure_begin
+
+    def part_win(p: MeasuredPart) -> dict[str, Any]:
+        return {"t_measure_begin_ns": p.window.t_measure_begin, "t0_ns": part_t0(p),
+                "t_drain_end_ns": p.window.t_drain_end, "drain_cap_reached": p.window.drain_cap_reached}
+
+    window_ns = sum(p.window.t_drain_end - part_t0(p) for p in parts)
+    offered_n = sum(max(len(part_t_sched(p)) - 1, 0) for p in parts)
+    offered_span = sum((ts[-1] - ts[0]) if len(ts) > 1 else 0 for ts in map(part_t_sched, parts))
+    if single:
+        win: dict[str, Any] = part_win(parts[0])
+    else:
+        win = {"series_parts": [{"part": p.label, **part_win(p)} for p in parts], "window_sum_ns": window_ns}
     completed = [(r, c) for r, c in entries if r.state is S.COMPLETED and c is not None]
     issued = [r for r, _ in entries if r.admission == "issued"]
     out: list[MetricSetResult] = []
@@ -297,12 +387,15 @@ def compute_metric_set_v1(bundle: RunBundle, folded: dict, counts: dict[str, int
                             "value=null", "p99 requires at least 100 completed samples"))
 
     # ---- device-domain segments (device_observation events of COMPLETED requests)
-    device_timing = bundle.manifest["measurement_boundary"]["definition"].get("device_timing")
+    device_timing = first.manifest["measurement_boundary"]["definition"].get("device_timing")
     declared = tuple((device_timing or {}).get("segments") or ())
-    observations: dict[int, list[dict[str, Any]]] = {}
-    for e in bundle.events:
-        if e["kind"] == "device_observation":
-            observations.setdefault(e["request_id"], []).append(e)
+    observations: list[dict[int, list[dict[str, Any]]]] = []
+    for part in parts:
+        obs_part: dict[int, list[dict[str, Any]]] = {}
+        for e in part.bundle.events:
+            if e["kind"] == "device_observation":
+                obs_part.setdefault(e["request_id"], []).append(e)
+        observations.append(obs_part)
     for family, (segment, _meaning) in DEVICE_FAMILIES.items():
         ids = [f"bmt.{family}.p{p}" for p in PERCENTILES] + [f"bmt.{family}.max_observed"]
         if segment not in declared:
@@ -313,14 +406,20 @@ def compute_metric_set_v1(bundle: RunBundle, folded: dict, counts: dict[str, int
             continue
         seg_values: list[int] = []
         problem = None
-        for r, _c in completed:
-            obs = observations.get(r.request_id, [])
-            timing = obs[0].get("timing") if len(obs) == 1 else None
-            value = timing.get(segment) if isinstance(timing, dict) else None
-            if type(value) is not int or value < 0:
-                problem = f"request {r.request_id}: no single device_observation with timing.{segment}"
+        for part, obs_part in zip(parts, observations):
+            where = "" if part.label is None else f"{part.label} "
+            for r, c in part.folded.values():
+                if r.state is not S.COMPLETED or c is None:
+                    continue
+                obs = obs_part.get(r.request_id, [])
+                timing = obs[0].get("timing") if len(obs) == 1 else None
+                value = timing.get(segment) if isinstance(timing, dict) else None
+                if type(value) is not int or value < 0:
+                    problem = f"{where}request {r.request_id}: no single device_observation with timing.{segment}"
+                    break
+                seg_values.append(value)
+            if problem:
                 break
-            seg_values.append(value)
         method = (device_timing or {}).get("method")
         pop = _requests_population("completed_requests_with_device_timing", len(seg_values), counts)
         pop["timing_method"] = method
@@ -336,8 +435,8 @@ def compute_metric_set_v1(bundle: RunBundle, folded: dict, counts: dict[str, int
         emit(f"bmt.{family}.max_observed", c, pop, notes=notes + ((problem,) if problem else (MAX_NOTE,)))
 
     # ---- rates
-    mode = bundle.run_spec["schedule"]["mode"]
-    configured_n = bundle.run_spec["resolved_plan"]["run"]["max_inflight"]
+    mode = first.run_spec["schedule"]["mode"]
+    configured_n = first.run_spec["resolved_plan"]["run"]["max_inflight"]
     rate_pop = {"name": "planned_requests", "sample_count": planned, "planned_count": planned,
                 "completed_count": counts["completed"], "coverage": 1.0 if planned else None,
                 "replay_mode": mode, "configured_n": configured_n}
@@ -345,16 +444,19 @@ def compute_metric_set_v1(bundle: RunBundle, folded: dict, counts: dict[str, int
         offered = Computed(MetricStatus.NOT_APPLICABLE, None, planned, "asap_has_no_offered_schedule")
     elif planned == 0:
         offered = Computed(MetricStatus.EMPTY, None, 0, "no_planned_requests")
-    elif planned < 2:
+    elif offered_n < 1:
         offered = Computed(MetricStatus.INVALID, None, planned, "insufficient_samples")
     else:
-        offered = per_second(planned - 1, t_sched[-1] - t_sched[0], planned)
+        offered = per_second(offered_n, offered_span, planned)
     emit("bmt.offered_rate", offered, rate_pop, inputs=("events.jsonl", "run_spec.json"))
     if planned == 0:
         window_rate = Computed(MetricStatus.EMPTY, None, 0, "no_planned_requests")
     else:
-        window_rate = per_second(counts["completed"], window.t_drain_end - t0, planned)
+        window_rate = per_second(counts["completed"], window_ns, planned)
     rate_notes = (clock_notes["throughput_window"],)
+    if not single:
+        rate_notes += ("run series: counts over the sum of the parts' windows and offered spans; the time between "
+                       "parts is not part of any window",)
     if mode == ReplayMode.ASAP.value:
         achieved = Computed(MetricStatus.NOT_APPLICABLE, None, planned, "closed_loop_replay")
         closed = window_rate
@@ -399,9 +501,8 @@ def compute_metric_set_v1(bundle: RunBundle, folded: dict, counts: dict[str, int
         req = met_c = Computed(MetricStatus.NOT_APPLICABLE, None, planned, "no_required_rate_parameter")
     else:
         req = Computed(MetricStatus.VALID, required, planned)
-        met_c = _required_rate_met(mode, required, offered, achieved, planned, planned - 1,
-                                   (t_sched[-1] - t_sched[0]) if len(t_sched) > 1 else 0,
-                                   counts["completed"], window.t_drain_end - t0)
+        met_c = _required_rate_met(mode, required, offered, achieved, planned, offered_n, offered_span,
+                                   counts["completed"], window_ns)
     emit("bmt.required_rate", req, rate_pop, inputs=("evaluation parameter required_rate_hz",), window_=None)
     emit("bmt.required_rate_met", met_c, rate_pop,
          inputs=("events.jsonl", "run_spec.json", "evaluation parameter required_rate_hz"),
@@ -409,8 +510,14 @@ def compute_metric_set_v1(bundle: RunBundle, folded: dict, counts: dict[str, int
                 "judged by their own metrics",))
 
     # ---- diagnostics: output identity
-    identity = output_identity(bundle.run_dir, bundle.run_spec["evaluation"]["output_reference"], folded,
-                               bundle.input_items)
+    reference = first.run_spec["evaluation"]["output_reference"]
+    if single:
+        identity = output_identity(first.run_dir, reference, parts[0].folded, first.input_items)
+    elif reference.get("kind") == "none":
+        identity = output_identity(first.run_dir, reference, {}, ())
+    else:
+        identity = IdentityResult(Computed(MetricStatus.NOT_SUPPORTED, None, 0, "output_reference_in_run_series"),
+                                  ("an output reference is not supported in a run series",))
     emit("bmt.output.identity_rate", identity.computed,
          _requests_population("completed_requests_with_reference_entry", identity.computed.n, counts),
          inputs=("events.jsonl", "outputs.bin", "run_spec.json", "input_items.jsonl"),
@@ -419,21 +526,43 @@ def compute_metric_set_v1(bundle: RunBundle, folded: dict, counts: dict[str, int
 
     # ---- task quality (bundle-only, conditional population)
     protocol = params["quality"]
-    segmentation = (catalog == CATALOG_VERSION and protocol is not None
-                    and protocol.get("evaluator") == CITYSCAPES_SEMSEG_MIOU_V1)
-    seg = segmentation_quality(bundle, folded, protocol) if catalog == CATALOG_VERSION else None
+    evaluator = None if protocol is None else protocol.get("evaluator")
+    v11_plus = catalog in (CATALOG_VERSION, CATALOG_VERSION_V1_2)
+    segmentation = (v11_plus and protocol is not None and evaluator == CITYSCAPES_SEMSEG_MIOU_V1)
+    is_det3d = (catalog == CATALOG_VERSION_V1_2 and protocol is not None and evaluator == NUSCENES_DET3D_V1)
+    if single:
+        bundle, folded = first, parts[0].folded
+        seg = segmentation_quality(bundle, folded, protocol) if v11_plus else None
+        d3 = det3d_quality(bundle, folded, protocol) if catalog == CATALOG_VERSION_V1_2 else None
+    else:
+        seg = None
+        if v11_plus:
+            seg = (_series_quality_stub(SegmentationQuality, evaluator) if segmentation
+                   else segmentation_quality(first, parts[0].folded, protocol))
+        d3 = (det3d_quality_parts([(p.bundle, p.folded, p.label) for p in parts], protocol)
+              if catalog == CATALOG_VERSION_V1_2 else None)
     if segmentation:
         assert seg is not None
         quality = DetectionQuality(MetricStatus.NOT_APPLICABLE, f"quality_evaluator_is:{CITYSCAPES_SEMSEG_MIOU_V1}",
                                    annotation_check=seg.annotation_check)
+    elif is_det3d:
+        assert d3 is not None
+        quality = DetectionQuality(MetricStatus.NOT_APPLICABLE, f"quality_evaluator_is:{NUSCENES_DET3D_V1}",
+                                   annotation_check=d3.annotation_check)
+    elif single or evaluator is None:
+        quality = detection_quality(first, parts[0].folded, protocol)
     else:
-        quality = detection_quality(bundle, folded, protocol)
+        quality = _series_quality_stub(DetectionQuality, evaluator)
+    if not single:  # the frozen-ground-truth check always covers every part
+        quality = dataclasses.replace(quality, annotation_check=_reference_check(parts))
     _emit_quality(emit, quality, counts)
 
     # ---- validity / evidence: data integrity and traceability
-    _emit_data(emit, bundle, folded, counts, quality)
+    _emit_data(emit, parts, counts, quality)
     if seg is not None:  # v1.1: no evaluator -> not_collected; another evaluator -> not_applicable
         _emit_segmentation(emit, seg, counts)
+    if d3 is not None:  # v1.2: likewise for the 3D detection quality
+        _emit_det3d(emit, d3, counts)
     assert [m.metric_id for m in out] == [m.metric_id for m in CATALOG_METRICS[catalog]]
     return out
 
@@ -454,6 +583,35 @@ def _emit_segmentation(emit: Any, seg: SegmentationQuality, counts: dict[str, in
     else:
         miou = Computed(seg.status, None, seg.evaluated_items, seg.reason)
     emit("quality.segmentation.conditional.miou", miou, base, inputs=inputs, notes=seg.notes)
+
+
+def _emit_det3d(emit: Any, d3: Det3DQuality, counts: dict[str, int]) -> None:
+    planned = counts["planned"]
+    base = {"name": "quality_evaluated_items", "sample_count": d3.evaluated_items, "planned_count": planned,
+            "completed_count": counts["completed"],
+            "coverage": ratio(d3.evaluated_items, planned) if planned else None, **d3.population}
+    inputs = ("events.jsonl", "outputs.bin", "input_items.jsonl", "quality_reference.jsonl", "manifest.json")
+    if d3.status in (MetricStatus.VALID, MetricStatus.EMPTY):
+        cov = rate(d3.evaluated_items, planned)
+    else:
+        cov = Computed(d3.status, None, 0, d3.reason)
+    emit("quality.det3d.coverage", cov, base, inputs=inputs, notes=d3.notes)
+    values = {}
+    if d3.status is MetricStatus.VALID and d3.result is not None:
+        r = d3.result
+        values = {"map": r["mean_ap"], "nds": r["nd_score"], "mate": r["tp_errors"]["trans_err"],
+                  "mase": r["tp_errors"]["scale_err"], "maoe": r["tp_errors"]["orient_err"],
+                  "mave": r["tp_errors"]["vel_err"], "maae": r["tp_errors"]["attr_err"]}
+    class_note = ()
+    if d3.result is not None:
+        class_note = ("per-class mean AP over the distance thresholds: " + ", ".join(
+            f"{c} {v:.6f}" for c, v in d3.result["mean_dist_aps"].items()),)
+    for key in ("map", "nds", "mate", "mase", "maoe", "mave", "maae"):
+        if key in values:
+            c = Computed(MetricStatus.VALID, values[key], d3.evaluated_items)
+        else:
+            c = Computed(d3.status, None, d3.evaluated_items, d3.reason)
+        emit(f"quality.det3d.conditional.{key}", c, base, inputs=inputs, notes=d3.notes + class_note)
 
 
 def _required_rate_met(mode: str, required: float, offered: Computed, achieved: Computed, planned: int,
@@ -518,27 +676,37 @@ def _emit_quality(emit: Any, quality: DetectionQuality, counts: dict[str, int]) 
         emit(f"{CONDITIONAL}.{name}", values[name], point_pop, inputs=inputs, notes=quality.notes)
 
 
-def _emit_data(emit: Any, bundle: RunBundle, folded: dict, counts: dict[str, int], quality: DetectionQuality) -> None:
-    items = bundle.input_items
+def _emit_data(emit: Any, parts: list[MeasuredPart], counts: dict[str, int], quality: DetectionQuality) -> None:
+    single = len(parts) == 1
+    items = [item for p in parts for item in p.bundle.input_items]
     n = len(items)
     item_pop = {"name": "input_items", "sample_count": n, "planned_count": counts["planned"]}
-    evidence = {e["condition"]: e for e in bundle.manifest["realization"]["evidence"]}
     emit("data.item_count", Computed(MetricStatus.VALID, n, n), item_pop, inputs=("input_items.jsonl",), window_=None)
     emit("data.annotation_coverage", rate(sum(1 for i in items if i.annotation_ref is not None), n), item_pop,
          inputs=("input_items.jsonl",), window_=None)
-    payload = evidence.get("input_payload", {})
-    if payload.get("validity") == "observed" and (payload.get("value") or {}).get("items_digest") == \
-            bundle.manifest["input"]["items_digest"]:
+    payload_ok = True
+    failed = 0
+    prepared_ok = True
+    for p in parts:
+        evidence = {e["condition"]: e for e in p.bundle.manifest["realization"]["evidence"]}
+        payload = evidence.get("input_payload", {})
+        payload_ok = payload_ok and (payload.get("validity") == "observed" and (payload.get("value") or {}).get(
+            "items_digest") == p.bundle.manifest["input"]["items_digest"])
+        preparation = evidence.get("input_preparation", {})
+        native = (p.bundle.manifest.get("realtime") or {}).get("measurement_plane") == "native"
+        if native and preparation.get("validity") in ("observed", "virtual") and isinstance(preparation.get("value"),
+                                                                                              dict):
+            failed += len(preparation["value"].get("failed_items", []))
+        else:
+            prepared_ok = False
+    if payload_ok:
         verified = Computed(MetricStatus.VALID, 1.0, n) if n else Computed(MetricStatus.EMPTY, None, 0, "no_items")
     else:
         verified = Computed(MetricStatus.NOT_COLLECTED, None, 0, "payload_verification_not_recorded")
     emit("data.integrity.payload_verified_rate", verified, item_pop, inputs=("manifest.json",), window_=None,
          notes=("INPUT.open re-reads the digest-pinned index and every file payload and fails the run on any "
                 "mismatch; recorded as observed input_payload evidence",))
-    preparation = evidence.get("input_preparation", {})
-    native = (bundle.manifest.get("realtime") or {}).get("measurement_plane") == "native"
-    if native and preparation.get("validity") in ("observed", "virtual") and isinstance(preparation.get("value"), dict):
-        failed = len(preparation["value"].get("failed_items", []))
+    if prepared_ok:
         prepared = rate(counts["planned"] - failed, counts["planned"])
     else:
         prepared = Computed(MetricStatus.NOT_COLLECTED, None, 0, "no_prepared_input_verification_recorded")
@@ -555,18 +723,21 @@ def _emit_data(emit: Any, bundle: RunBundle, folded: dict, counts: dict[str, int
     complete = True
     problems: list[str] = []
     reference_ok = quality.annotation_check is None or quality.annotation_check[0] == quality.annotation_check[1]
-    for request, completion in folded.values():
-        if request.state is not S.COMPLETED or completion is None:
-            continue
-        ref = completion.output_ref
-        if len(request.item_indices) != 1 or not 0 <= request.item_indices[0] < n or ref is None:
-            complete = False
-            problems.append(f"request {request.request_id}: no single input item or no output reference")
-            continue
-        blob = read_output_blob(bundle.run_dir, ref)
-        if len(blob) != ref.length or sha256_hex(blob) != ref.sha256:
-            complete = False
-            problems.append(f"request {request.request_id}: output bytes do not re-verify")
+    for p in parts:
+        n_part = len(p.bundle.input_items)
+        where = "" if single else f"{p.label} "
+        for request, completion in p.folded.values():
+            if request.state is not S.COMPLETED or completion is None:
+                continue
+            ref = completion.output_ref
+            if len(request.item_indices) != 1 or not 0 <= request.item_indices[0] < n_part or ref is None:
+                complete = False
+                problems.append(f"{where}request {request.request_id}: no single input item or no output reference")
+                continue
+            blob = read_output_blob(p.bundle.run_dir, ref)
+            if len(blob) != ref.length or sha256_hex(blob) != ref.sha256:
+                complete = False
+                problems.append(f"{where}request {request.request_id}: output bytes do not re-verify")
     if not reference_ok:
         complete = False
         problems.append("frozen ground truth does not re-verify against the items' annotation digests")

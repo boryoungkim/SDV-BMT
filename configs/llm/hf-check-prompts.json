@@ -1,0 +1,23 @@
+{
+  "purpose": "GPU (vLLM BF16) vs Hugging Face transformers (FP32, CPU) small check: first token and a short greedy generation. Prompts written for this repository; no dataset text.",
+  "chat_template_date": "26 Jul 2024",
+  "max_new_tokens": 32,
+  "prompts": [
+    "What is the capital of France?",
+    "Explain in one sentence why the sky is blue.",
+    "Write a haiku about autumn leaves.",
+    "List three prime numbers greater than 50.",
+    "Translate 'good morning' into Spanish.",
+    "What is 17 multiplied by 23?",
+    "Give a short definition of photosynthesis.",
+    "Name the largest planet in the solar system.",
+    "Summarize, in two sentences, a story in which a robot learns to paint.",
+    "What does CPU stand for?",
+    "Suggest a name for a small coffee shop near a train station.",
+    "Describe the water cycle briefly.",
+    "Which is heavier, a kilogram of feathers or a kilogram of iron?",
+    "Write a Python one-liner that reverses a string.",
+    "What are the three primary colors of light?",
+    "A vehicle receives a software update over the air. Before installing it, the vehicle checks the signature of the update package, confirms that the battery charge is above a threshold, and verifies that the car is parked. During installation the previous version is kept so that the system can roll back if the new version fails its self-test after reboot. After a successful update, the vehicle reports the new version to the server and deletes the old copy only after one more successful start. Question: list, in order, the checks and actions that happen before, during and after the installation."
+  ]
+}

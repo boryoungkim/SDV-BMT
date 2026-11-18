@@ -15,6 +15,7 @@ from .specs import DetectionOperatingPoint
 
 COCO_DETECTION_BBOX_V1 = "coco-detection-bbox/1"
 CITYSCAPES_SEMSEG_MIOU_V1 = "cityscapes-semseg-miou/1"  # v0.1.2 (Metric Set v1.1)
+NUSCENES_DET3D_V1 = "nuscenes-det3d-cvpr2019/1"  # CenterPoint-Pillars (Metric Set v1.2)
 
 # Category ids of the COCO 2017 instances annotations (pycocotools ``getCatIds()`` of
 # instances_val2017.json, ascending): the category set the COCO evaluation runs over.
@@ -49,6 +50,12 @@ QUALITY_EVALUATORS: dict[str, QualityEvaluatorDeclaration] = {
         task="cityscapes-semantic-segmentation-19class",
         annotation_schema="cityscapes-gtfine-trainid-labelmap/1",
         output_schemas=("labelmap-u8-rowrle/1",),
+    ),
+    NUSCENES_DET3D_V1: QualityEvaluatorDeclaration(
+        evaluator_id=NUSCENES_DET3D_V1,
+        task="nuscenes-3d-detection-10class",
+        annotation_schema="nuscenes-det3d-gt/1",
+        output_schemas=("centerpoint-det3d-f32/1",),
     ),
 }
 

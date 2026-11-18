@@ -2,6 +2,47 @@
 
 All notable changes to SDV-BMT are recorded here. Versions follow semantic versioning.
 
+## [Unreleased]
+
+### Added
+
+- **3D detection (LiDAR): CenterPoint-Pillars**, the mmdetection3d nuScenes checkpoint (pillar 0.2 m, circle NMS).
+  New workload `centerpoint_nuscenes` (input contract `nuscenes-pillar02-p40000/1`): the 10-sweep point cloud and the
+  voxelization are built offline (pillar tensor payloads), the device runs pillar features, BEV scatter, backbone,
+  neck and head, and decode + circle NMS + encode (`centerpoint-det3d-f32/1`) run in the native output stage with a
+  byte-identical Python twin. A NaN heatmap logit, or a detection value that does not fit float32, is an output error
+  in both. Results: `docs/results/centerpoint-pillars-gpu-reference-result.md`; README and `docs/roadmap.md` describe
+  CenterPoint, run series and the LLM path; `THIRD_PARTY_NOTICES.md` lists the checkpoint, nuScenes and the tools'
+  packages.
+- **Native cuDNN plan operations** for CenterPoint: pillar feature net, pillar scatter, zero fill and depth-to-space,
+  in a third NVRTC source compiled only when a plan uses it.
+- **Model-level Metric Set v1.2** (`sdv-bmt-model-metric-set-v1.2`, selectable; the default stays v1.1): v1.1 plus
+  eight nuScenes detection metrics (`quality.det3d.coverage`, `quality.det3d.conditional.map`, `.nds`, `.mate`,
+  `.mase`, `.maoe`, `.mave`, `.maae`), computed by the evaluator `nuscenes-det3d-cvpr2019/1` from the ground truth
+  frozen in the bundle.
+- **Run series (minimal).** An experiment may declare `series: {max_items_per_run, boundary}`; `sdv-bmt run` then
+  executes the dataset selection as consecutive ordinary runs (parts) that never split a block of index rows with the
+  same `metadata[boundary]` value, and writes `series.json`. `sdv-bmt evaluate SERIES_DIR` checks that the parts
+  differ only in their selection and produces one result: counts summed, distributions over all requests, rates over
+  the sum of the parts' windows, task quality evaluated once over all items. A series takes no output reference and
+  one repetition. `series.json` records the process gap between part runs and, for real-time parts, each part's
+  measurement window on the host monotonic clock and the gap between consecutive windows.
+- **Tools** (offline): `tools/centerpoint/` (official info files and reference run, nuScenes input builder, model
+  re-definition, ONNX export, plan converter, numeric gate, output-twin and evaluator cross-checks, cuDNN table pinning,
+  experiment generator).
+- **LLM path (Python measurement plane)**, `python -m sdv_bmt.llm`. It runs Llama 3.2 1B / 3B Instruct and
+  Llama 3.1 8B Instruct on a GPU with vLLM and on a FuriosaAI RNGD card with furiosa-llm. Requests are
+  pre-tokenized and sent one at a time. TTFT, TPOT and E2E are taken from host monotonic times of the runtime's
+  stream. Two workloads are fixed: S1–S5 fixed-length synthetic token IDs, and MMLU with 1,000 items (zero-shot,
+  generation-based). Prefix caching off and greedy decoding are verified from the values the runtime reports.
+  Results go into their own bundle format (`sdv-bmt-llm-bundle/1`) and are evaluated from the bundle only with the
+  new catalog `sdv-bmt-llm-v1`. The CNN Metric Sets are unchanged. Tools are in `tools/llm/` (RNGD build and smoke,
+  baseline script, prefix-cache control, tokenizer and weight identity checks, GPU vs Hugging Face check,
+  independent MMLU re-scorer) together with the package lists of the two measurement environments. Documentation:
+  `docs/llm_benchmark.md`. Results: `docs/results/llm-llama3-gpu-rngd-result.md`. The architecture tests name the
+  LLM package's exceptions per module (host clock and asyncio in `llm/runner.py`, asyncio and lazily imported
+  runtimes in `llm/backends.py`); the rules for all other packages are unchanged.
+
 ## [0.1.2] — 2026-11-10
 
 Model extension on the GPU reference track: eight reference models instead of one (five YOLOX detectors on COCO,

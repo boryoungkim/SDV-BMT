@@ -5,8 +5,10 @@ Commands (there is deliberately no ``analyze`` command)::
     sdv-bmt validate PLAN               VALIDATE + PREFLIGHT, writes nothing
     sdv-bmt run PLAN [--out DIR]        run(s): virtual clock (blocking mock adapters)
                                         or realtime (native measurement plane), writes run bundles
-    sdv-bmt evaluate RUN_DIR [--eval-config FILE] [--catalog VERSION]
+    sdv-bmt evaluate RUN_DIR|SERIES_DIR [--eval-config FILE] [--catalog VERSION]
                                         bundle-only evaluation into a new eval_id
+                                        (a run series directory gives one result
+                                        over all of its parts)
                                         (default catalog: Model-level Metric Set v1.1;
                                         sdv-bmt-model-metric-set-v1 and bmt-portable-v1-stage1a
                                         reproduce earlier evaluations)
@@ -34,6 +36,7 @@ from ..contracts.records import RECORD_SCHEMA_VERSION, input_pipeline_digest
 from ..contracts.specs import DatasetSpec, DrivingScenarioSpec
 from ..contracts.status import NOMINAL_LEVEL, ExecutionKind, ExecutionStatus
 from ..dut.fake import FakeBlockingDUT, FakeNativeDUT
+from ..dut.mobilint import MobilintAriesDUT
 from ..dut.nvidia import NvidiaCudaDUT
 from ..dut.eagle_n import EagleNDUT
 from ..evidence.bundle import MANIFEST_FILE, read_json
@@ -41,21 +44,26 @@ from ..input.annotations import IndexAnnotationSource
 from ..input.dataset_fixture import DatasetFixtureProvider
 from ..input.recorded_scenario_fixture import RecordedScenarioFixtureProvider
 from ..metrics.evaluator import CATALOGS, DEFAULT_CATALOG, EvaluationError, evaluate_run
+from ..metrics.series import evaluate_series, is_series_dir
 from ..runner.plan import PlanError, ResolvedPlan, load_evaluation_override, load_plan
 from ..runner.runner import BenchmarkRunner, Components, PlanRejected
+from ..runner.series import SERIES_FILE, describe_partition, partition, run_series
 from ..stress.fake import FakeStressProvider
 from ..stress.none import NoStressProvider
 from ..workload.fake import FakeIdentityWorkload
 from ..workload.reference import ReferenceConvNetWorkload
+from ..workload.centerpoint import CenterPointNuScenesWorkload
 from ..workload.deeplab import DeepLabCityscapesWorkload
 from ..workload.yolox import YoloxCocoWorkload
 
 WORKLOADS = {FakeIdentityWorkload.IMPLEMENTATION: FakeIdentityWorkload,
              ReferenceConvNetWorkload.IMPLEMENTATION: ReferenceConvNetWorkload,
              YoloxCocoWorkload.IMPLEMENTATION: YoloxCocoWorkload,
-             DeepLabCityscapesWorkload.IMPLEMENTATION: DeepLabCityscapesWorkload}
+             DeepLabCityscapesWorkload.IMPLEMENTATION: DeepLabCityscapesWorkload,
+             CenterPointNuScenesWorkload.IMPLEMENTATION: CenterPointNuScenesWorkload}
 DUT_ADAPTERS = {FakeBlockingDUT.ADAPTER: FakeBlockingDUT, FakeNativeDUT.ADAPTER: FakeNativeDUT,
-                NvidiaCudaDUT.ADAPTER: NvidiaCudaDUT, EagleNDUT.ADAPTER: EagleNDUT}
+                NvidiaCudaDUT.ADAPTER: NvidiaCudaDUT, MobilintAriesDUT.ADAPTER: MobilintAriesDUT,
+                EagleNDUT.ADAPTER: EagleNDUT}
 STRESS_KINDS = {FakeStressProvider.KIND: FakeStressProvider}
 
 
@@ -130,8 +138,13 @@ def cmd_validate(plan_path: str) -> int:
     except PlanError as exc:
         return _rejected("validate", exc.issues)
     kind, realtime = _plan_kind(rp)
+    series = None
     try:
+        if rp.plan.series is not None:
+            series = describe_partition(rp, partition(rp))
         pf = BenchmarkRunner(rp, build_components).preflight()
+    except PlanError as exc:
+        return _rejected("validate", exc.issues, kind, realtime)
     except PlanRejected as exc:
         return _rejected("validate", exc.issues, kind, realtime)
     _banner(kind, realtime)
@@ -164,6 +177,7 @@ def cmd_validate(plan_path: str) -> int:
             "check": pf.stress_decision,
         },
         "comparison_keys": pf.comparison_keys,
+        **({"series": series} if series is not None else {}),
     }, kind, realtime)
     return EXIT_OK
 
@@ -174,6 +188,8 @@ def cmd_run(plan_path: str, out: str) -> int:
     except PlanError as exc:
         return _rejected("run", exc.issues)
     kind, realtime = _plan_kind(rp)
+    if rp.plan.series is not None:
+        return _run_series(rp, out, kind, realtime)
     _banner(kind, realtime)
     result = BenchmarkRunner(rp, build_components).run_experiment(Path(out))
     runs = [
@@ -202,22 +218,57 @@ def cmd_run(plan_path: str, out: str) -> int:
     return EXIT_RUN_FAILED if failed else EXIT_OK
 
 
+def _run_series(rp: ResolvedPlan, out: str, kind: str, realtime: bool) -> int:
+    try:
+        so = run_series(rp, build_components, Path(out))
+    except PlanError as exc:
+        return _rejected("run", exc.issues, kind, realtime)
+    except PlanRejected as exc:
+        return _rejected("run", exc.issues, kind, realtime)
+    _banner(kind, realtime)
+    runs = [{"run_id": o.run_id, "run_dir": str(o.run_dir), "execution_status": o.execution_status,
+             "execution_reason": o.execution_reason, "measurement_status": o.measurement_status,
+             "measurement_reason": o.measurement_reason, "request_counts": o.request_counts} for o in so.outcomes]
+    _emit({
+        "command": "run",
+        "status": "executed" if runs else "rejected",
+        "experiment_id": rp.plan.experiment_id,
+        "plan_digest": rp.plan_digest,
+        "series": {"series_id": so.series_id, "series_dir": str(so.series_dir), "status": so.status,
+                   "series_file": str(so.series_dir / SERIES_FILE)},
+        "runs": runs,
+        "rejected": so.rejected,
+    }, kind, realtime)
+    if not runs:
+        return EXIT_REJECTED
+    return EXIT_OK if so.status == "completed" else EXIT_RUN_FAILED
+
+
 def cmd_evaluate(run_dir: str, eval_config: Optional[str], catalog: str = DEFAULT_CATALOG) -> int:
     try:
         override = load_evaluation_override(eval_config) if eval_config else None
     except PlanError as exc:
         return _rejected("evaluate", exc.issues)
+    series = is_series_dir(run_dir)
     try:
-        outcome = evaluate_run(run_dir, override=override, catalog=catalog)
+        if series:
+            outcome = evaluate_series(run_dir, override=override, catalog=catalog)
+        else:
+            outcome = evaluate_run(run_dir, override=override, catalog=catalog)
     except EvaluationError as exc:
         return _rejected("evaluate", [str(exc)])
     kind = outcome.metrics[0].execution_kind.value if outcome.metrics else None
-    realtime = read_json(Path(run_dir) / MANIFEST_FILE).get("schema_version") != RECORD_SCHEMA_VERSION
+    if series:
+        first = read_json(Path(run_dir) / SERIES_FILE)["parts"][0]["run_dir"]
+        realtime = read_json(Path(run_dir) / first / MANIFEST_FILE).get("schema_version") != RECORD_SCHEMA_VERSION
+    else:
+        realtime = read_json(Path(run_dir) / MANIFEST_FILE).get("schema_version") != RECORD_SCHEMA_VERSION
     _banner(kind, realtime)
     _emit({
         "command": "evaluate",
         "status": "evaluated",
         "run_dir": str(Path(run_dir)),
+        **({"series": True} if series else {}),
         "eval_id": outcome.eval_id,
         "eval_dir": str(outcome.eval_dir),
         "catalog_version": catalog,

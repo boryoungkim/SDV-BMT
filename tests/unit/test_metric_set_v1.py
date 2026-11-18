@@ -14,7 +14,7 @@ from sdv_bmt.contracts.specs import DeadlineSpec, EvaluationOverride, ReplayPoli
 from sdv_bmt.contracts.status import DeadlinePolicy, MetricLayer, MetricStatus, ReplayMode
 from sdv_bmt.metrics import metric_set_v1
 from sdv_bmt.metrics.evaluator import CATALOGS, DEFAULT_CATALOG, EvaluationError
-from tests._helpers import LEGACY_CATALOG, METRIC_SET_V1, METRIC_SET_V1_1, MS, evaluate, load, metric_map, reseal, run_plan, variant
+from tests._helpers import LEGACY_CATALOG, METRIC_SET_V1, METRIC_SET_V1_1, METRIC_SET_V1_2, MS, evaluate, load, metric_map, reseal, run_plan, variant
 
 M = MetricStatus
 
@@ -70,12 +70,19 @@ def g1_timed(g1):
 
 
 def test_catalog_identity_layers_and_default():
-    # v0.1.2: Metric Set v1.1 (v1 + 2 segmentation quality metrics) is the default; v1 stays selectable, frozen
-    assert DEFAULT_CATALOG == METRIC_SET_V1_1 and set(CATALOGS) == {METRIC_SET_V1_1, METRIC_SET_V1, LEGACY_CATALOG}
+    # v0.1.2: Metric Set v1.1 (v1 + 2 segmentation quality metrics) is the default; v1 stays selectable, frozen.
+    # Metric Set v1.2 = v1.1 + 8 nuScenes 3D detection quality metrics (CenterPoint-Pillars), selectable.
+    assert DEFAULT_CATALOG == METRIC_SET_V1_1
+    assert set(CATALOGS) == {METRIC_SET_V1_2, METRIC_SET_V1_1, METRIC_SET_V1, LEGACY_CATALOG}
     ids = [m.metric_id for m in metric_set_v1.METRICS]
     assert len(ids) == len(set(ids)) == 91
     assert [m.metric_id for m in metric_set_v1.METRICS_V1_1] == ids + [
         "quality.segmentation.coverage", "quality.segmentation.conditional.miou"]
+    assert [m.metric_id for m in metric_set_v1.METRICS_V1_2] == [m.metric_id for m in metric_set_v1.METRICS_V1_1] + [
+        "quality.det3d.coverage", "quality.det3d.conditional.map", "quality.det3d.conditional.nds",
+        "quality.det3d.conditional.mate", "quality.det3d.conditional.mase", "quality.det3d.conditional.maoe",
+        "quality.det3d.conditional.mave", "quality.det3d.conditional.maae"]
+    assert all(m.layer is MetricLayer.TASK_QUALITY for m in metric_set_v1.DET3D_METRICS)
     layers = {m.metric_id: m.layer for m in metric_set_v1.METRICS}
     assert layers["bmt.dut_service.p99"] is MetricLayer.PERFORMANCE
     assert layers["bmt.submit.p50"] is MetricLayer.DIAGNOSTICS
