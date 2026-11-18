@@ -1,5 +1,5 @@
 #!/bin/bash
-# The measured part of the MLA400 YOLOX port in one command (porting guide steps 6-8), as run for the hand-over:
+# The measured part of the MLA400 YOLOX port in one command, as run for the reference evidence:
 #   1. capture (asap, all 1000 items) of the five models, then the NPU goldens re-extracted from them and compared
 #      with the committed ones (configs/references/*mla400*.golden.jsonl);
 #   2. capture-identity of the five models (second capture against the golden);

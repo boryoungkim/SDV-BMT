@@ -7,19 +7,23 @@
 // checked against the run specification) created with the declared core mode (single core on one pinned
 // (cluster, core)) and the asynchronous pipeline enabled, then launched.  Prepared inputs (the workload's
 // canonical CHW float32 BGR tensor) are converted to HWC once per item at staging, outside the measured path.
-// submit = Model::inferAsync on the item's HWC tensor; poll = Future::waitFor(0); collect = Future::get (the
-// runtime's own output conversion to float32) and the head tail the compiled model does not contain.
+// submit = Model::inferAsync on the item's HWC tensor; poll = Future::waitFor(0); collect = Future::get (it
+// hands over the nine outputs, already converted to float32 by the runtime) and the head tail the compiled model
+// does not contain.
 //
-// Head tail (porting guide step 3): the compiled model
-// ends at the nine head convolutions (per stride 8/16/32: box 4, objectness logit 1, class logits 80; HWC).
+// Head tail: the compiled model ends at the nine head convolutions (per stride 8/16/32: box 4, objectness logit 1,
+// class logits 80; HWC).
 // collect() applies sigmoid to objectness and classes and writes the workload's raw contract (anchors x 85
 // float32, anchor-major, strides in order 8, 16, 32) into a buffer allocated once in prepare.  The nine
 // outputs are matched by (grid, channels), not by position: the runtime returns them in its own order.
 //
 // Measurement boundary (docs/measurement_protocol.md): DUT-service ends at the poll that observes
-// waitFor(0) == true.  Future::get and the head tail run in collect(), i.e. in the output stage, and their
-// durations are recorded as observations.  No per-inference device timing is exposed by qbruntime: the device
-// segments are not observable (DeviceFacts carries no segment).
+// waitFor(0) == true.  The runtime quantizes the input and dequantizes the outputs to float32 inside the request,
+// before the Future reports completion, so both are inside DUT-service (checked on the device: requests with int8
+// and with float32 outputs differ in the time to completion, not in the duration of Future::get).  Future::get
+// and the head tail run in collect(), i.e. in the output stage, and their durations are recorded as observations.
+// No per-inference device timing is exposed by qbruntime: the device segments are not observable (DeviceFacts
+// carries no segment).
 #pragma once
 
 #include <dirent.h>
@@ -343,7 +347,7 @@ class MobilintBackend {
     bool collect(DeviceFacts& f, std::string_view& raw, ErrorInfo& err) {
         int64_t t0 = mbl_mono_ns();
         mbl::StatusCode sc;
-        std::vector<mbl::NDArray<float>> outs = future_.get(sc);  // the runtime allocates the result per call
+        std::vector<mbl::NDArray<float>> outs = future_.get(sc);  // float32, dequantized before completion
         pending_ = false;
         int64_t t1 = mbl_mono_ns();
         if (!sc) {
@@ -393,7 +397,10 @@ class MobilintBackend {
         s["point"] = point;
         s["t_monotonic_ns"] = t_begin;
         s["t_realtime_us"] = mbl_realtime_us();
-        s["request_pending"] = pending_;
+        // A request is in flight when it was submitted and its Future does not report completion yet.  pending_
+        // alone is not enough: the untimed precondition requests are polled to completion but never collected, so
+        // pending_ stays true after them.  waitFor(0) is the non-blocking completion check (safe to call repeatedly).
+        s["request_pending"] = pending_ && !future_.waitFor(0);
         s["foreign_device_openers"] = foreign_openers();
         s["duration_ns"] = mbl_mono_ns() - t_begin;
         return s;
@@ -417,6 +424,7 @@ class MobilintBackend {
         }
         if (!busy) {
             StdoutToStderr quiet;  // "Model disposed." and any destructor log go to stderr
+            future_ = mbl::Future<float>();  // release the last request's future before the model and the accelerator
             if (launched_) {
                 mbl::StatusCode sc = model_->dispose();
                 facts["dispose"] = mbl_status(sc);
@@ -424,8 +432,8 @@ class MobilintBackend {
             }
             model_.reset();
             acc_.reset();
+            staged_.clear();  // only when idle: the runtime may still read the inputs of a running request
         }
-        staged_.clear();
         cleaned_ = true;
         facts["busy"] = busy;
         if (busy) facts["note"] = "an inference was still running after 5 s; resources are released at process exit";

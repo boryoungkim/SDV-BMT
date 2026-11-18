@@ -7,14 +7,15 @@ qbruntime Accelerator and Model with one pinned (cluster, core) in single-core m
 pipeline, per-item staging of the prepared input converted once to HWC float32 host memory, submission by
 ``Model::inferAsync``, completion by polling ``Future::waitFor(0)``, and in collect() ``Future::get`` plus the
 YOLOX head tail (sigmoid and reassembly) that the compiled model does not contain (the compiled graph ends at
-the nine head convolutions; porting guide step 3).  This Python class only declares the measurement, builds the
+the nine head convolutions).  This Python class only declares the measurement, builds the
 backend part of the run specification and interprets the recorded facts into realization evidence.  Mobilint
 concepts stay in this package and in the native Mobilint backend.
 
 Measurement boundary: DUT-service ends at the poll that observes ``waitFor(0) == true``; it contains the
-runtime's own input conversion (float32 -> quantized NPU input) and the host-device transfers, which qbruntime
-performs inside the inference request.  ``Future::get`` (output conversion to float32, a result allocated per
-call by the runtime) and the head tail are in the output stage; their durations are recorded per request.
+runtime's own input conversion (float32 -> quantized NPU input), the host-device transfers and the output
+conversion (dequantization to float32), which qbruntime performs inside the inference request, before the Future
+reports completion.  ``Future::get`` (it hands over the float32 outputs) and the head tail are in the output stage;
+their durations are recorded per request.
 qbruntime exposes no per-inference device timing, so no device segment is reported.
 """
 
@@ -135,8 +136,9 @@ class MobilintAriesDUT(NativeRealtimeAdapter):
             clock_domain=RunClockDomain.MONOTONIC,
             submit_semantics="native runner submit: Model::inferAsync on the item's staged HWC float32 tensor (the "
                              "runtime quantizes the input and queues the request) and returns",
-            complete_semantics="Future::waitFor(0) returns true; Future::get (output conversion to float32) and the "
-                               "YOLOX head tail (sigmoid, reassembly to anchors x 85) follow in the output stage",
+            complete_semantics="Future::waitFor(0) returns true (the runtime has dequantized the outputs to "
+                               "float32 by then); Future::get (hands over the outputs) and the YOLOX head tail "
+                               "(sigmoid, reassembly to anchors x 85) follow in the output stage",
             device_identity=identity,
         )
 
@@ -202,8 +204,9 @@ class MobilintAriesDUT(NativeRealtimeAdapter):
             "quantizes and transfers each request's input inside the inference request (not independently traced)",
             {"prepared_input_location": "host", "layout": "HWC float32"})
         rec(RealizedCondition.BUFFER_STATE, EvidenceValidity.SELF_REPORTED, f"{src}:buffer_management",
-            "staged inputs and the raw output buffer are allocated before the window; Future::get returns a result "
-            "allocated by the runtime per call (output stage); durations of get and of the head tail per request",
+            "staged inputs and the raw output buffer are allocated before the window; Future::get hands over result "
+            "arrays that the runtime allocated and filled before completion (output stage); durations of get and of "
+            "the head tail per request",
             {"future_get_ns": _quantiles([o["mobilint.future_get_ns"] for o in observations
                                           if o.get("mobilint.future_get_ns") is not None]),
              "host_tail_ns": _quantiles([o["mobilint.host_tail_ns"] for o in observations
@@ -221,9 +224,10 @@ class MobilintAriesDUT(NativeRealtimeAdapter):
                 rec(condition, EvidenceValidity.NOT_OBSERVABLE, src,
                     "backend snapshot at measure_begin/drain_end unavailable")
             return tuple(out)
-        rec(RealizedCondition.RUNTIME_QUEUE_STATE, EvidenceValidity.OBSERVED, f"{src}:request_state",
-            "whether the native runner had a request in flight at the window edges; by design at most one request "
-            "is in flight (design fact, not an observation)",
+        rec(RealizedCondition.RUNTIME_QUEUE_STATE, EvidenceValidity.SELF_REPORTED, f"{src}:request_state",
+            "the native runner's own record of a submitted request whose Future::waitFor(0) did not yet report "
+            "completion, at the window edges; by design at most one request is in flight; qbruntime exposes no "
+            "queue state of its own",
             {"request_pending_measure_begin": begin.get("request_pending"),
              "request_pending_drain_end": end.get("request_pending")})
         users = {"foreign_device_openers_measure_begin": begin.get("foreign_device_openers"),

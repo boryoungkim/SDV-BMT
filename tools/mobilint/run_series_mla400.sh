@@ -1,5 +1,5 @@
 #!/bin/bash
-# MLA400 evidence driver (common guide section 10.2), the Mobilint counterpart of tools/stage2b_g_real/run_series.sh:
+# MLA400 evidence driver, the Mobilint counterpart of tools/stage2b_g_real/run_series.sh:
 # run plans in the given order into ROOT/STAGE with tools/mobilint/sdv_bmt_mla400.py, evaluate each new bundle,
 # and record every command plus the host and NPU state before each run in ROOT/COMMANDS.log (logcmd.py format).
 #   tools/mobilint/run_series_mla400.sh ROOT STAGE LABEL PLAN [PLAN ...]

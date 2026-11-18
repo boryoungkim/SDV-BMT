@@ -123,7 +123,11 @@ def test_realization_evidence_declares_what_cannot_be_observed(capture):
     for condition in (RealizedCondition.DATA_MOVEMENT, RealizedCondition.DEVICE_FREQUENCY,
                       RealizedCondition.THERMAL_STATE, RealizedCondition.MEMORY_PRESSURE_BANDWIDTH):
         assert evidence[condition.value] == EvidenceValidity.NOT_OBSERVABLE.value
-    assert evidence[RealizedCondition.RUNTIME_QUEUE_STATE.value] == EvidenceValidity.OBSERVED.value
+    assert evidence[RealizedCondition.RUNTIME_QUEUE_STATE.value] == EvidenceValidity.SELF_REPORTED.value
+    queue = next(e for e in m["realization"]["evidence"]
+                 if e["condition"] == RealizedCondition.RUNTIME_QUEUE_STATE.value)
+    # the precondition requests are polled to completion but never collected: none may count as in flight
+    assert queue["value"] == {"request_pending_measure_begin": False, "request_pending_drain_end": False}
     assert evidence[RealizedCondition.COMPETING_DEVICE_USERS.value] == EvidenceValidity.OBSERVED.value
     assert evidence[RealizedCondition.INPUT_RESIDENCY.value] == EvidenceValidity.SELF_REPORTED.value
 

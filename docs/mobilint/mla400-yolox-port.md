@@ -47,9 +47,12 @@ stage (per item, outside timing) ──────► stage: CHW float32 → HW
 
 - **DUT-service** = `t_complete − t_submit_begin`. It contains the runtime's input quantization and host→device
   copy, NPU execution, the device→host copy and dequantization, and the completion poll. qbruntime does all of
-  these inside the request, and they cannot be separated.
-- **Output stage**: `Future::get`, the host tail and the shared decode/NMS/encode. The durations of `get` and of
-  the tail are recorded per request as `mobilint.future_get_ns` and `mobilint.host_tail_ns`.
+  these inside the request, and they cannot be separated. That dequantization is inside DUT-service was checked on
+  the device: requests with int8 outputs and with float32 outputs differ in the time to completion, not in the
+  duration of `Future::get`.
+- **Output stage**: `Future::get` (it only hands over the float32 outputs), the host tail and the shared
+  decode/NMS/encode. The durations of `get` and of the tail are recorded per request as `mobilint.future_get_ns`
+  and `mobilint.host_tail_ns`.
 - **Not observable** (declared, never estimated):
   - device-side timing (the `bmt.h2d.*`, `bmt.device_execution_bracket.*` and `bmt.d2h.*` metrics are
     `not_supported`);
@@ -105,7 +108,7 @@ backend also records per-request output-stage observations outside the catalog: 
 
 | # | problem | resolution | where |
 |---|---|---|---|
-| P1 | Where to end the compiled graph. The YOLOX head tail (sigmoid on objectness and classes, concat to 85 channels, reshape, concat over strides) puts unbounded box offsets and probabilities in 0..1 into one tensor. One shared 8-bit scale for such a tensor is a known accuracy risk (porting guide, step 3) | The compiled graph ends at the **nine head convolutions** (per stride: box 4, objectness 1, classes 80). This is the last point before outputs with different value ranges are concatenated, and the same cut the Mobilint YOLO tutorial uses. Each output keeps its own scale. The weight-free tail runs on the host in FP32 in `collect()`, in the output stage. The cut graph plus the host tail equals the full ONNX graph in ONNX Runtime up to float rounding. All weights stay on the NPU. Do not move the tail back onto the NPU without an L1 check on the full evaluation set | `tools/mobilint/cut_head.py`, `backend.hpp` collect() |
+| P1 | Where to end the compiled graph. The YOLOX head tail (sigmoid on objectness and classes, concat to 85 channels, reshape, concat over strides) puts unbounded box offsets and probabilities in 0..1 into one tensor. One shared 8-bit scale for such a tensor is a known accuracy risk | The compiled graph ends at the **nine head convolutions** (per stride: box 4, objectness 1, classes 80). This is the last point before outputs with different value ranges are concatenated, and the same cut the Mobilint YOLO tutorial uses. Each output keeps its own scale. The weight-free tail runs on the host in FP32 in `collect()`, in the output stage. The cut graph plus the host tail equals the full ONNX graph in ONNX Runtime up to float rounding. All weights stay on the NPU. Do not move the tail back onto the NPU without an L1 check on the full evaluation set | `tools/mobilint/cut_head.py`, `backend.hpp` collect() |
 | P2 | qbruntime returns the nine outputs in its own order and layout (HWC), not in ONNX output order | Outputs are matched by (grid size, channels) at prepare, never by position. prepare fails if a shape matches no head tensor | `backend.hpp` prepare() |
 | P3 | `inferAsync` returns before the runtime reads the input buffer | Each slot's HWC buffer stays valid and unchanged until its request completes. Input conversion and transfer are therefore inside DUT-service, which is correct by definition | boundary probe; `backend.hpp` stage()/submit() |
 | P4 | Is the output final when `waitFor(0)` first returns true? | Yes: checked on the device by comparing digests of `get()` at the first true poll and later, with interleaved inputs. Completion = first `waitFor(0) == true` | boundary probe |
@@ -114,7 +117,7 @@ backend also records per-request output-stage observations outside the catalog: 
 | P7 | Integration with the shared code | With the agreement of the common-code owner: the adapter is registered in the shared CLI (`DUT_ADAPTERS` in `src/sdv_bmt/cli/main.py`), and `native/Makefile` has an optional target `mobilint`, outside `all` and `portable`, so hosts without qbruntime still build. Adding `native/src/mobilint/` changes the native source-tree digest: rebuild the other runners (`make -C native`) on their hosts after merging | `src/sdv_bmt/cli/main.py`, `native/Makefile` |
 | P8 | The NPU sits on one NUMA node of a two-socket host; the GPU plans pin the harness to the other node | The MLA400 plans pin `realtime.cpu_affinity` to the CPUs of the NPU's NUMA node, found from sysfs/`udevadm` | `configs/experiments/*mla400*` |
 | P9 | The compiled `.mxq` differs on every compile (the header holds a compile time and a build id) | The workload pins the `.mxq` SHA-256, and prepare refuses any other file. A recompile gives bit-identical outputs, so the goldens stay valid, but the workload's `mxq_sha256` must be updated | workloads, `backend.hpp` prepare() |
-| P10 | The replay rate of the GPU family plans is kept for all five models on a single-core DUT | Decision of the reference owner (porting guide step 8). Drops and deadline misses are reported by the metrics, never hidden. A whole-chip configuration (Global8) would be a separate DUT | baseline plans |
+| P10 | Replay rate of the baseline plans | The baseline plans use the fixed rate of the GPU family plans, 30 Hz, for all five models, with the deadline equal to the frame period. Dropped requests and deadline misses are part of the reported metrics. A whole-chip configuration (Global8) would be a separate DUT config | baseline plans |
 
 ## 5. Rules to keep
 

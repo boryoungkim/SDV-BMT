@@ -2,8 +2,8 @@
 """Cut a YOLOX ONNX model at the nine head-convolution outputs for the Mobilint ARIES NPU (offline tool).
 
 Why: the tail of the YOLOX head (per-level Sigmoid on objectness and classes, Concat to 85 channels, Reshape,
-Concat over levels, Transpose) has no weights and puts box offsets and probabilities into one tensor. Per the
-porting guide step 3 the graph is cut at the head convolutions (per level: box 4, objectness logit 1, class
+Concat over levels, Transpose) has no weights and puts box offsets and probabilities into one tensor. The graph is
+therefore cut at the head convolutions (per level: box 4, objectness logit 1, class
 logits 80), the last point before outputs with different value ranges are concatenated, and the tail is applied
 on the host (host_tail below; the C++ backend does the same in collect()).
 
@@ -15,7 +15,7 @@ Check: ONNX Runtime runs the original and the cut model on the same inputs (seed
 The maximum absolute difference, both SHA-256 values and the output layout go into <out>.cut.json for the compile
 record.
 
-Environment: a Python with onnx, onnxruntime and numpy (on mario: qbc14-env).
+Environment: a Python with onnx, onnxruntime and numpy (for example the qbcompiler environment).
 
     python3 tools/mobilint/cut_head.py --onnx ~/sdv_assets/yolox_onnx/yolox_s.onnx \\
         --out ~/sdv_assets/compile/head9/yolox_s_head9.onnx --calib-dir ~/sdv_assets/calib/yolox-640/npy
@@ -149,7 +149,7 @@ def main() -> int:
     anchors = sum(lv["grid"] ** 2 for lv in layout)
     record = {
         "schema": SCHEMA,
-        "reason": "cut at the head convolutions per porting guide step 3; the weight-free head tail "
+        "reason": "cut at the head convolutions; the weight-free head tail "
                   "(Sigmoid/Concat/Reshape/Transpose) is applied on the host",
         "source": {"file": str(src), "sha256": file_sha256(src)},
         "cut": {"file": str(out), "sha256": file_sha256(out)},

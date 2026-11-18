@@ -1,5 +1,5 @@
-# YOLOX NPU port (ACTUAL, Mobilint MLA400 /dev/aries2, single core Cluster0/Core0). Second capture (porting guide
-# step 6.3): the same plan as yolox-m-mla400-capture.yaml, evaluated against the golden extracted from the first
+# YOLOX NPU port (ACTUAL, Mobilint MLA400 /dev/aries2, single core Cluster0/Core0). Second capture:
+# the same plan as yolox-m-mla400-capture.yaml, evaluated against the golden extracted from the first
 # capture (tools/stage2b_g_real/capture_golden.py), so bmt.output.identity_rate diagnoses run-to-run determinism
 # and output corruption of the NPU path (not correctness).
 schema_version: 1

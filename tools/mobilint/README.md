@@ -13,7 +13,7 @@ directory contains no Mobilint software, headers or compiled models (`.mxq`).
 |---|---|
 | DUT | one ARIES chip of the MLA400 (`/dev/aries2` on the reference host), single core Cluster0/Core0 (`configs/duts/mobilint-mla400-aries2-single-c0c0.yaml`) |
 | Models | the ONNX files of the GPU workloads (`artifact_sha256` checked), compiled to int8 by qbcompiler with the vendor default quantization, 100 calibration images |
-| Graph | cut at the nine head convolutions (porting guide step 3), the last point before outputs with different value ranges are concatenated. The weight-free tail (sigmoid on objectness and classes, concat to anchors × 85) runs on the host, in the backend's `collect()`, i.e. in the output stage, outside DUT-service |
+| Graph | cut at the nine head convolutions, the last point before outputs with different value ranges are concatenated. The weight-free tail (sigmoid on objectness and classes, concat to anchors × 85) runs on the host, in the backend's `collect()`, i.e. in the output stage, outside DUT-service |
 | Contract | same preprocessing, postprocessing, codec and raw output (anchors × 85 float32) as the GPU workloads |
 | Plans | per model: `capture` (asap), `capture-identity` (second capture against the NPU golden), `baseline` (30 Hz, deadline = frame period) |
 

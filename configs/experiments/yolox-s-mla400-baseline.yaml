@@ -1,8 +1,9 @@
-# YOLOX NPU port (ACTUAL, Mobilint MLA400 /dev/aries2, single core Cluster0/Core0). Baseline (porting guide step 8):
+# YOLOX NPU port (ACTUAL, Mobilint MLA400 /dev/aries2, single core Cluster0/Core0). Baseline:
 # YOLOX-S compiled for aries-rb (8-bit, cut at the nine head convolutions, head tail on the host) on the first 1000
 # COCO val2017 images, nominal (no stress), N=1, queue 0, drop_new, 32 untimed precondition requests, fixed rate
 # 30 Hz (the GPU family rate), deadline = frame period. Output reference = the model's NPU capture golden
-# (determinism/corruption diagnostic only). Same plan as yolox-s-baseline.yaml except workload and DUT.
+# (determinism/corruption diagnostic only). Same plan as yolox-s-baseline.yaml except workload, DUT,
+# golden and CPU affinity (the CPUs of the NPU's NUMA node).
 schema_version: 1
 experiment_id: yolox-s-mla400-baseline
 execution_kind: actual
