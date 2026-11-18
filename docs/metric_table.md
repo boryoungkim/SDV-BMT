@@ -13,6 +13,7 @@ tools/run_model.sh list                 # the model names (12 on the GPU, 3 on t
 tools/run_model.sh yolox-s              # one model (validate, 5 runs, evaluate, table)
 tools/run_model.sh yolox-s --dry-run    # print the commands only; uses no device and writes nothing
 tools/run_model.sh all                  # the 12 models on the GPU in order; a failed model does not stop the others
+tools/run_model.sh centerpoint-pillar02-mini   # CenterPoint on the 162 mini samples only (no val run series)
 tools/run_model.sh all-mla400           # the 5 MLA400 models in order, on the MLA400 host
 ```
 
@@ -29,6 +30,7 @@ What each model runs:
 |---|---|---|
 | `yolox-{tiny,s,m,l,x}`, `deeplabv3plus-{r18,r50,r101}` | `configs/experiments/<model>-baseline.yaml`, `REPS` runs | `sdv-bmt-model-metric-set-v1.1` |
 | `centerpoint-pillar02` | `centerpoint-pillar02-mini-baseline.yaml` (`REPS` runs) and the run series `centerpoint-pillar02-val-series.yaml` (once) | `sdv-bmt-model-metric-set-v1.2` |
+| `centerpoint-pillar02-mini` | `centerpoint-pillar02-mini-baseline.yaml` only (`REPS` runs on the 162 mini samples, no val run series) | `sdv-bmt-model-metric-set-v1.2` |
 | `llama-3.2-1b-instruct`, `llama-3.2-3b-instruct`, `llama-3.1-8b-instruct` | on the GPU: `tools/llm/run_baselines.sh gpu`, `REPS` speed runs and one MMLU run | `sdv-bmt-llm-v1` |
 | `llama-3.2-1b-instruct-rngd`, `llama-3.2-3b-instruct-rngd`, `llama-3.1-8b-instruct-rngd` | on the FuriosaAI RNGD card: `tools/llm/run_baselines.sh rngd`, `REPS` speed runs and one MMLU run | `sdv-bmt-llm-v1` |
 | `yolox-{tiny,s,m,l,x}-mla400` | `configs/experiments/<model>-baseline.yaml` on the Mobilint MLA400, `REPS` runs | `sdv-bmt-model-metric-set-v1.1` |

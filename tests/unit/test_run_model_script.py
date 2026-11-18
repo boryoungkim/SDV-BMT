@@ -17,6 +17,7 @@ SCRIPT = REPO_ROOT / "tools" / "run_model.sh"
 MODELS = ["yolox-tiny", "yolox-s", "yolox-m", "yolox-l", "yolox-x", "deeplabv3plus-r18", "deeplabv3plus-r50",
           "deeplabv3plus-r101", "centerpoint-pillar02", "llama-3.2-1b-instruct", "llama-3.2-3b-instruct",
           "llama-3.1-8b-instruct"]
+CP_MINI = "centerpoint-pillar02-mini"
 RNGD = ["llama-3.2-1b-instruct-rngd", "llama-3.2-3b-instruct-rngd", "llama-3.1-8b-instruct-rngd"]
 MLA400 = ["yolox-tiny-mla400", "yolox-s-mla400", "yolox-m-mla400", "yolox-l-mla400", "yolox-x-mla400"]
 LLM_ENV = ("SDV_BMT_MODELS", "SDV_BMT_DATASETS", "SDV_BMT_CACHE", "VLLM_PY", "FURIOSA_PY", "HF_HOME")
@@ -69,7 +70,7 @@ def _datasets(stdout):
 
 def test_list_names_the_12_gpu_models_the_3_rngd_models_and_the_5_mla400_models():
     proc = _run(["list"])
-    assert proc.returncode == 0 and proc.stdout.split() == MODELS + RNGD + MLA400
+    assert proc.returncode == 0 and proc.stdout.split() == MODELS + [CP_MINI] + RNGD + MLA400
     assert _run(["no-such-model"]).returncode == 2
 
 
@@ -214,4 +215,24 @@ def test_llama_flow_one_device_per_name_and_existing_runs_refused_per_device(tmp
     assert "gpu0-vllm.speed" in table and "gpu0-vllm.mmlu" in table and "rngd-furiosa" not in table
     again = _run(["llama-3.2-1b-instruct-rngd"], env)
     assert again.returncode == 3 and "already has runs of llama-3.2-1b-instruct.rngd-furiosa" in again.stdout
+
+
+def test_centerpoint_mini_runs_the_mini_set_only(tmp_path):
+    proc = _run([CP_MINI, "--dry-run"], {"R": str(tmp_path / "bench")})
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "validate configs/experiments/centerpoint-pillar02-mini-baseline.yaml" in proc.stdout
+    assert "val-series" not in proc.stdout and "--catalog sdv-bmt-model-metric-set-v1.2" in proc.stdout
+    assert proc.stdout.count("sdv_bmt.cli.table") == 1 and f"tables/{CP_MINI}.metrics.csv" in proc.stdout
+    assert _datasets(proc.stdout) == ["nuscenes-mini-val4 (162 items)"] and not (tmp_path / "bench").exists()
+    for name, text in (("sdv-bmt", STUB_BMT), ("python", STUB_PY)):
+        (tmp_path / name).write_text(text)
+        (tmp_path / name).chmod(0o755)
+    out = tmp_path / "bench"
+    env = {"R": str(out), "REPS": "1", "BMT": str(tmp_path / "sdv-bmt"), "PY": str(tmp_path / "python"),
+           "MARK": str(tmp_path / "MARK")}
+    ran = _run([CP_MINI], env)
+    assert ran.returncode == 0, ran.stdout + ran.stderr
+    assert len(list((out / "vision" / "centerpoint-pillar02-mini-baseline").glob("run-*"))) == 1
+    assert "evaluated 1 (sdv-bmt-model-metric-set-v1.2)" in ran.stdout
+    assert (out / "tables" / f"{CP_MINI}.metrics.csv").is_file() and not (out / "vision" / "centerpoint-pillar02-val-series").exists()
 

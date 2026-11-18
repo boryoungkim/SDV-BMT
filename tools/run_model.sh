@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Run one SDV-BMT model end to end on this host: validate, timed runs, evaluation, metric table.
 #
-#   tools/run_model.sh list                      the model names: 12 on the GPU, 3 on the RNGD card, 5 on the MLA400
-#   tools/run_model.sh <model> [--dry-run]       one model (llama-<m> runs on the GPU, llama-<m>-rngd on the RNGD card)
+#   tools/run_model.sh list                      the model names: 12 on the GPU (+ CenterPoint mini), 3 RNGD, 5 MLA400
+#   tools/run_model.sh <model> [--dry-run]       one model (llama-<m> runs on the GPU, llama-<m>-rngd on the RNGD card;
+#                                                centerpoint-pillar02-mini: CenterPoint on the 162 mini samples only)
 #   tools/run_model.sh all [--dry-run]           the 12 models on the GPU in order (a failed model does not stop the rest)
 #   tools/run_model.sh all-mla400 [--dry-run]    the 5 Mobilint MLA400 models in order, on the NPU host
 #
@@ -43,6 +44,7 @@ CAT=sdv-bmt-model-metric-set-v1.1          # default catalog (YOLOX, DeepLab)
 CAT_DET3D=sdv-bmt-model-metric-set-v1.2    # with the nuScenes 3D detection metrics (CenterPoint)
 MODELS=(yolox-tiny yolox-s yolox-m yolox-l yolox-x deeplabv3plus-r18 deeplabv3plus-r50 deeplabv3plus-r101
         centerpoint-pillar02 llama-3.2-1b-instruct llama-3.2-3b-instruct llama-3.1-8b-instruct)   # on the GPU
+CP_MINI=centerpoint-pillar02-mini   # CenterPoint on the mini set only (no val run series), on the GPU
 RNGD=(llama-3.2-1b-instruct-rngd llama-3.2-3b-instruct-rngd llama-3.1-8b-instruct-rngd)        # FuriosaAI RNGD card
 MLA400=(yolox-tiny-mla400 yolox-s-mla400 yolox-m-mla400 yolox-l-mla400 yolox-x-mla400)   # Mobilint NPU host
 MLA_RUNNER=${SDV_BMT_NATIVE_DIR:-native/build}/sdv-bmt-native-mobilint
@@ -73,7 +75,8 @@ banner() {  # SDV-BMT in 3-row block letters in a box (color on a terminal unles
 
 typical_s() {  # typical duration of one unit on the reference host, seconds (yolox-*-mla400: the YOLOX value, an
   case $1 in   # estimate; the MLA400 runs were not timed on this host)
-    yolox-*) echo 150 ;; deeplabv3plus-*) echo 460 ;; centerpoint-mini) echo 45 ;; centerpoint-series) echo 1700 ;;
+    yolox-*) echo 150 ;; deeplabv3plus-*) echo 460 ;; centerpoint-mini|centerpoint-pillar02-mini) echo 45 ;;
+    centerpoint-series) echo 1700 ;;
     llama-gpu) echo 540 ;; llama-rngd) echo 660 ;; *) echo 0 ;;
   esac
 }
@@ -169,10 +172,11 @@ make_table() {  # name "module [subcommand]" dir...: metric table and the repres
   echo; cat "$R/tables/$name.console.txt"; echo
 }
 
-run_vision_model() {  # name
-  local name=$1 exp=$1-baseline rc
+run_vision_model() {  # name: configs/experiments/<name>-baseline.yaml (CenterPoint mini: the 3D detection catalog)
+  local name=$1 exp=$1-baseline cat=$CAT rc
+  [ "$name" = "$CP_MINI" ] && cat=$CAT_DET3D
   take_mark "$name" || return $?
-  vision_runs "$name" "$exp" "$(typical_s "$name")" "$CAT"; rc=$?
+  vision_runs "$name" "$exp" "$(typical_s "$name")" "$cat"; rc=$?
   drop_mark
   [ $rc = 0 ] || return $rc
   make_table "$name" sdv_bmt.cli.table "$R/vision/$exp"
@@ -303,7 +307,7 @@ run_one() {  # model -> 0 ok, 1 failed, 3 refused; ELAPSED = seconds taken
   [ $DRY = 1 ] && LOG=/dev/null
   case $name in
     yolox-*-mla400) run_mla400_model "$name" ;;
-    yolox-*|deeplabv3plus-*) run_vision_model "$name" ;;
+    yolox-*|deeplabv3plus-*|"$CP_MINI") run_vision_model "$name" ;;
     centerpoint-pillar02) run_centerpoint ;;
     llama-*) run_llama "$name" ;;
   esac
@@ -313,7 +317,7 @@ run_one() {  # model -> 0 ok, 1 failed, 3 refused; ELAPSED = seconds taken
   return $rc
 }
 
-known() { local m; for m in "${MODELS[@]}" "${RNGD[@]}" "${MLA400[@]}"; do [ "$m" = "$1" ] && return 0; done; return 1; }
+known() { local m; for m in "${MODELS[@]}" "$CP_MINI" "${RNGD[@]}" "${MLA400[@]}"; do [ "$m" = "$1" ] && return 0; done; return 1; }
 
 plans_of() {  # model: the plan files its runs use
   case $1 in
@@ -362,7 +366,7 @@ main() {
   done
   case $target in
     ""|-h|--help) usage; exit 2 ;;
-    list) printf '%s\n' "${MODELS[@]}" "${RNGD[@]}" "${MLA400[@]}"; exit 0 ;;
+    list) printf '%s\n' "${MODELS[@]}" "$CP_MINI" "${RNGD[@]}" "${MLA400[@]}"; exit 0 ;;
   esac
   local -a group=()
   case $target in

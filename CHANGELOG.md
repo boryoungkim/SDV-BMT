@@ -53,7 +53,8 @@ All notable changes to SDV-BMT are recorded here. Versions follow semantic versi
   progress bar, after a start header that names the models and their datasets. A Llama model runs on one device
   per name: `llama-<m>` on the GPU (vLLM), `llama-<m>-rngd` on the FuriosaAI RNGD card (furiosa-llm), and existing
   runs are refused per device. `all` runs the 12 models on the GPU, `all-mla400` the five Mobilint MLA400 YOLOX
-  plans on the NPU host. `tools/show_metrics.py` shows metric tables in a readable form (headline rows, or every
+  plans on the NPU host, and `centerpoint-pillar02-mini` runs CenterPoint on the 162 mini samples only (no val run
+  series). `tools/show_metrics.py` shows metric tables in a readable form (headline rows, or every
   model row per experiment and layer with times in ms).
 
 ## [0.1.2] — 2026-11-10
