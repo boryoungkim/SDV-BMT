@@ -151,9 +151,7 @@ backend also records per-request output-stage observations outside the catalog: 
 
 ## 7. Open items
 
-- Shared-code requests:
-  - an `ACTUAL_NOTICE` wording for NPU runs;
-  - add `qbruntime` to the vendor-header boundary test.
+- Shared-code request: add `qbruntime` to the vendor-header boundary test.
 - `describe()` reads the sysfs path `/sys/class/ariesN`; the correct path is `/sys/class/aries/ariesN`. Only
   descriptive fields are affected. It is to be fixed together with the Global8 DUT.
 - Global8 (whole chip, 8 cores) as a second DUT, if scheduled.

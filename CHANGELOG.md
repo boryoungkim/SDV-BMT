@@ -57,6 +57,15 @@ All notable changes to SDV-BMT are recorded here. Versions follow semantic versi
   series). `tools/show_metrics.py` shows metric tables in a readable form (headline rows, or every
   model row per experiment and layer with times in ms).
 
+### Fixed
+
+- **Measure watchdog of the native adapters with `asap` replay.** The time limit for the native runner's
+  MEASURE/DRAIN reply counted an `asap` window as one request, so any `asap` window was killed after a fixed time
+  whatever its item count (about 154 s with a 1 s request timeout and 32 precondition requests). It now allows one
+  request timeout per planned item. Fixed-rate and recorded schedules are unchanged.
+- **CLI notice of ACTUAL runs** no longer says "not an NPU performance result"; it says that the bundle's device
+  identity names the DUT (a GPU run is reference-accelerator validation).
+
 ## [0.1.2] — 2026-11-10
 
 Model extension on the GPU reference track: eight reference models instead of one (five YOLOX detectors on COCO,
