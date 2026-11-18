@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Run one SDV-BMT model end to end on this host: validate, timed runs, evaluation, metric table.
 #
-#   tools/run_model.sh list                      the model names: 12 GPU / RNGD models, then 5 Mobilint MLA400 models
-#   tools/run_model.sh <model> [--dry-run]       one model
-#   tools/run_model.sh all [--dry-run]           the 12 GPU / RNGD models in order (a failed model does not stop the rest)
+#   tools/run_model.sh list                      the model names: 12 on the GPU, 3 on the RNGD card, 5 on the MLA400
+#   tools/run_model.sh <model> [--dry-run]       one model (llama-<m> runs on the GPU, llama-<m>-rngd on the RNGD card)
+#   tools/run_model.sh all [--dry-run]           the 12 models on the GPU in order (a failed model does not stop the rest)
 #   tools/run_model.sh all-mla400 [--dry-run]    the 5 Mobilint MLA400 models in order, on the NPU host
 #
 # --dry-run prints the commands and checks the configuration files; it uses no device and writes nothing.
@@ -11,7 +11,8 @@
 # Environment:
 #   R     results root (default runs/bench-YYYYMMDD); everything goes below it and nothing is overwritten
 #   REPS  runs per model (default 5); the MMLU runs and the CenterPoint val series run once
-#   Llama models also need SDV_BMT_MODELS, SDV_BMT_DATASETS, SDV_BMT_CACHE, VLLM_PY, FURIOSA_PY and HF_HOME
+#   Llama models (llama-<m> on the GPU with vLLM, llama-<m>-rngd on the FuriosaAI RNGD card with furiosa-llm) also need
+#   SDV_BMT_MODELS, SDV_BMT_DATASETS, SDV_BMT_CACHE, VLLM_PY, FURIOSA_PY and HF_HOME
 #   (the cache that holds the RNGD 8B artifact), see docs/llm_benchmark.md.
 #   MLA400 models (yolox-*-mla400) run on the host of the Mobilint MLA400 card: they need the native runner
 #   (tools/mobilint/build_native.sh), the device node of the DUT config and the compiled models (.mxq) named by the
@@ -41,7 +42,8 @@ LLM_BASELINES=${LLM_BASELINES:-tools/llm/run_baselines.sh}
 CAT=sdv-bmt-model-metric-set-v1.1          # default catalog (YOLOX, DeepLab)
 CAT_DET3D=sdv-bmt-model-metric-set-v1.2    # with the nuScenes 3D detection metrics (CenterPoint)
 MODELS=(yolox-tiny yolox-s yolox-m yolox-l yolox-x deeplabv3plus-r18 deeplabv3plus-r50 deeplabv3plus-r101
-        centerpoint-pillar02 llama-3.2-1b-instruct llama-3.2-3b-instruct llama-3.1-8b-instruct)
+        centerpoint-pillar02 llama-3.2-1b-instruct llama-3.2-3b-instruct llama-3.1-8b-instruct)   # on the GPU
+RNGD=(llama-3.2-1b-instruct-rngd llama-3.2-3b-instruct-rngd llama-3.1-8b-instruct-rngd)        # FuriosaAI RNGD card
 MLA400=(yolox-tiny-mla400 yolox-s-mla400 yolox-m-mla400 yolox-l-mla400 yolox-x-mla400)   # Mobilint NPU host
 MLA_RUNNER=${SDV_BMT_NATIVE_DIR:-native/build}/sdv-bmt-native-mobilint
 NPU_DEV=
@@ -255,36 +257,43 @@ llama_runs() {  # device: finished runs in the newest log of tools/llm/run_basel
   [ -n "$f" ] && echo "runs done $(grep -c '"run_status": "completed"' "$f")/$(( REPS + 1 ))" || echo "starting"
 }
 
-run_llama() {  # model
-  local m=$1 v missing="" c dev f done
+llama_target() {  # model: "<llama model> <device> <experiment suffix>"; llama-<m>-rngd runs on the RNGD card,
+  case $1 in       # llama-<m> on the GPU
+    *-rngd) echo "${1%-rngd} rngd rngd-furiosa" ;;
+    *)      echo "$1 gpu gpu0-vllm" ;;
+  esac
+}
+
+run_llama() {  # model: llama-<m> (GPU, vLLM) or llama-<m>-rngd (RNGD, furiosa-llm); one device per model name
+  local name=$1 m dev sfx v missing="" c f done
+  read -r m dev sfx <<< "$(llama_target "$name")"
   for v in SDV_BMT_MODELS SDV_BMT_DATASETS SDV_BMT_CACHE VLLM_PY FURIOSA_PY HF_HOME; do
     [ -n "${!v:-}" ] || missing="$missing $v"
   done
   if [ -n "$missing" ]; then
-    [ $DRY = 1 ] && say "$m: not set:$missing (needed for the real run)" \
-      || { say "$m: export$missing first (docs/llm_benchmark.md)"; return 1; }
+    [ $DRY = 1 ] && say "$name: not set:$missing (needed for the real run)" \
+      || { say "$name: export$missing first (docs/llm_benchmark.md)"; return 1; }
   fi
-  for c in configs/llm/experiments/"$m".{gpu0-vllm,rngd-furiosa}.{speed,mmlu}.yaml; do
-    [ -f "$c" ] || { say "$m: missing $c"; return 1; }
+  for c in configs/llm/experiments/"$m.$sfx".{speed,mmlu}.yaml; do
+    [ -f "$c" ] || { say "$name: missing $c"; return 1; }
   done
-  if [ $DRY = 0 ] && compgen -G "$R/llm/$m.*/run-*" > /dev/null; then
-    say "$m: $R/llm already has runs of this model; use a new R"; return 3
+  if [ $DRY = 0 ] && compgen -G "$R/llm/$m.$sfx.*/run-*" > /dev/null; then  # this device only: the other device's
+    say "$name: $R/llm already has runs of $m.$sfx; use a new R"; return 3     # runs of the model may share R
   fi
   if [ -e "$MARK" ] && [ $DRY = 0 ]; then
     say "another timed run is in progress ($MARK):"; sed 's/^/    /' "$MARK"; return 3
   fi
-  for dev in gpu rngd; do  # run_baselines.sh holds runs/TIMED_RUN_IN_PROGRESS itself and waits for an idle device
-    say "$m: $dev (speed $REPS runs + MMLU 1 run)"
-    watch "$m $dev" "$(typical_s llama-$dev)" "llama_runs $dev" \
-      env OUT="$R/llm" REPS="$REPS" "$LLM_BASELINES" "$dev" "$m" \
-      || { say "$m $dev: run_baselines.sh failed (see $LOG)"; return 1; }
-    [ $DRY = 1 ] && continue
+  say "$name: $dev (speed $REPS runs + MMLU 1 run)"  # run_baselines.sh holds runs/TIMED_RUN_IN_PROGRESS itself and
+  watch "$name" "$(typical_s llama-$dev)" "llama_runs $dev" \
+    env OUT="$R/llm" REPS="$REPS" "$LLM_BASELINES" "$dev" "$m" \
+    || { say "$name: run_baselines.sh failed (see $LOG)"; return 1; }        # waits for an idle device
+  if [ $DRY = 0 ]; then
     f=$(ls -t "$R/llm"/baseline-"$dev"-*.log | head -1)
     done=$(grep -c '"run_status": "completed"' "$f")
-    say "$m $dev: $done/$(( REPS + 1 )) runs completed (log $f)"
-    if [ "$done" -ne $(( REPS + 1 )) ] || grep -q ABORT "$f"; then say "$m $dev: incomplete, see $f"; return 1; fi
-  done
-  make_table "$m" "sdv_bmt.llm table" "$R/llm/$m".{gpu0-vllm,rngd-furiosa}.{speed,mmlu}
+    say "$name: $done/$(( REPS + 1 )) runs completed (log $f)"
+    if [ "$done" -ne $(( REPS + 1 )) ] || grep -q ABORT "$f"; then say "$name: incomplete, see $f"; return 1; fi
+  fi
+  make_table "$name" "sdv_bmt.llm table" "$R/llm/$m.$sfx".{speed,mmlu}
 }
 
 ELAPSED=0
@@ -304,12 +313,13 @@ run_one() {  # model -> 0 ok, 1 failed, 3 refused; ELAPSED = seconds taken
   return $rc
 }
 
-known() { local m; for m in "${MODELS[@]}" "${MLA400[@]}"; do [ "$m" = "$1" ] && return 0; done; return 1; }
+known() { local m; for m in "${MODELS[@]}" "${RNGD[@]}" "${MLA400[@]}"; do [ "$m" = "$1" ] && return 0; done; return 1; }
 
 plans_of() {  # model: the plan files its runs use
   case $1 in
     centerpoint-pillar02) echo configs/experiments/centerpoint-pillar02-{mini-baseline,val-series}.yaml ;;
-    llama-*) echo configs/llm/experiments/"$1".{gpu0-vllm,rngd-furiosa}.{speed,mmlu}.yaml ;;
+    llama-*) local m dev sfx; read -r m dev sfx <<< "$(llama_target "$1")"
+             echo configs/llm/experiments/"$m.$sfx".{speed,mmlu}.yaml ;;
     *) echo configs/experiments/"$1"-baseline.yaml ;;
   esac
 }
@@ -352,7 +362,7 @@ main() {
   done
   case $target in
     ""|-h|--help) usage; exit 2 ;;
-    list) printf '%s\n' "${MODELS[@]}" "${MLA400[@]}"; exit 0 ;;
+    list) printf '%s\n' "${MODELS[@]}" "${RNGD[@]}" "${MLA400[@]}"; exit 0 ;;
   esac
   local -a group=()
   case $target in
@@ -363,7 +373,7 @@ main() {
   [ $DRY = 1 ] || mkdir -p "$R/vision" "$R/llm" "$R/tables" "$R/logs"
   banner
   printf '  %-16s %s\n' "results" "$(realpath -m "$R")" "runs per model" "$REPS" "models" "$(case $target in
-    all) echo "all ${#MODELS[@]} (GPU / RNGD)" ;; all-mla400) echo "all ${#MLA400[@]} (Mobilint MLA400)" ;;
+    all) echo "all ${#MODELS[@]} (GPU)" ;; all-mla400) echo "all ${#MLA400[@]} (Mobilint MLA400)" ;;
     *) echo "$target" ;; esac)"
   if [ ${#group[@]} = 0 ]; then print_datasets "$target"; else print_datasets "${group[@]}"; fi
   [ $DRY = 1 ] && printf '  %-16s %s\n' "mode" "dry run (prints the commands; nothing is executed)"

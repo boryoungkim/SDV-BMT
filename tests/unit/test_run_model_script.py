@@ -1,7 +1,8 @@
 """tools/run_model.sh: the model names, the dry run (configuration files, no writes), and the flow with stub
 commands in place of sdv-bmt and the table command (runs, evaluation, table, refusal of existing runs, the timed-run
-marker; MLA400: the native runner, device node and compiled model checks, and the refusal while another process
-holds the NPU device).  No device is used."""
+marker; Llama: one device per model name, llama-<m> on the GPU and llama-<m>-rngd on the RNGD card, with the refusal
+of existing runs per device; MLA400: the native runner, device node and compiled model checks, and the refusal while
+another process holds the NPU device).  No device is used."""
 
 from __future__ import annotations
 
@@ -16,6 +17,7 @@ SCRIPT = REPO_ROOT / "tools" / "run_model.sh"
 MODELS = ["yolox-tiny", "yolox-s", "yolox-m", "yolox-l", "yolox-x", "deeplabv3plus-r18", "deeplabv3plus-r50",
           "deeplabv3plus-r101", "centerpoint-pillar02", "llama-3.2-1b-instruct", "llama-3.2-3b-instruct",
           "llama-3.1-8b-instruct"]
+RNGD = ["llama-3.2-1b-instruct-rngd", "llama-3.2-3b-instruct-rngd", "llama-3.1-8b-instruct-rngd"]
 MLA400 = ["yolox-tiny-mla400", "yolox-s-mla400", "yolox-m-mla400", "yolox-l-mla400", "yolox-x-mla400"]
 LLM_ENV = ("SDV_BMT_MODELS", "SDV_BMT_DATASETS", "SDV_BMT_CACHE", "VLLM_PY", "FURIOSA_PY", "HF_HOME")
 
@@ -26,6 +28,18 @@ case $1 in
        printf '{\\n  "execution_status": "completed",\\n  "measurement_status": "valid"\\n}\\n' ;;
   evaluate) mkdir -p "$2/evaluations/eval-stub" ;;
 esac
+"""
+STUB_LLM = """#!/usr/bin/env bash
+# tools/llm/run_baselines.sh DEVICE MODEL with OUT and REPS: REPS speed runs and one MMLU run of that device
+case $1 in gpu) s=gpu0-vllm ;; rngd) s=rngd-furiosa ;; esac
+log=$OUT/baseline-$1-$(date +%s%N).log
+for i in $(seq 1 "$REPS"); do mkdir -p "$OUT/$2.$s.speed/run-$i"; echo '{"run_status": "completed"}' >> "$log"; done
+mkdir -p "$OUT/$2.$s.mmlu/run-1"; echo '{"run_status": "completed"}' >> "$log"
+"""
+STUB_LLM_TABLE = """#!/usr/bin/env bash
+args="$*"; while [ "$1" != "--out" ]; do shift; done
+printf 'row,metric_name\\nheadline,TTFT\\n# %s\\n' "$args" > "$2"
+echo "   Time to first token - 1.000 ms" >&2
 """
 STUB_PY = """#!/usr/bin/env bash
 while [ "$1" != "--out" ]; do shift; done
@@ -53,9 +67,9 @@ def _datasets(stdout):
     return values
 
 
-def test_list_names_the_12_models_and_the_5_mla400_models():
+def test_list_names_the_12_gpu_models_the_3_rngd_models_and_the_5_mla400_models():
     proc = _run(["list"])
-    assert proc.returncode == 0 and proc.stdout.split() == MODELS + MLA400
+    assert proc.returncode == 0 and proc.stdout.split() == MODELS + RNGD + MLA400
     assert _run(["no-such-model"]).returncode == 2
 
 
@@ -73,10 +87,11 @@ def test_dry_run_checks_every_configuration_and_writes_nothing(tmp_path):
         assert (REPO_ROOT / cfg).is_file() and f"validate {cfg}" in proc.stdout
     assert "configs/experiments/centerpoint-pillar02-val-series.yaml" in proc.stdout
     assert proc.stdout.count("--catalog sdv-bmt-model-metric-set-v1.2") == 2
-    for name in MODELS[9:]:
-        assert f"run_baselines.sh gpu {name}" in proc.stdout and f"run_baselines.sh rngd {name}" in proc.stdout
-        for c in REPO_ROOT.glob(f"configs/llm/experiments/{name}.*.yaml"):
+    for name in MODELS[9:]:  # all = the 12 models on the GPU: the Llama models with vLLM only
+        assert f"run_baselines.sh gpu {name}" in proc.stdout and f"run_baselines.sh rngd {name}" not in proc.stdout
+        for c in REPO_ROOT.glob(f"configs/llm/experiments/{name}.gpu0-vllm.*.yaml"):
             assert c.is_file()
+    assert "all 12 (GPU)" in proc.stdout and "rngd-furiosa" not in proc.stdout
     assert proc.stdout.count("sdv_bmt.cli.table") == 9 and proc.stdout.count("sdv_bmt.llm table") == 3
     assert _datasets(proc.stdout) == [  # under the models line, each once, as the result table writes them
         "coco-val2017-first1000-416 (1,000 items)", "coco-val2017-first1000 (1,000 items)",
@@ -161,3 +176,42 @@ def test_mla400_flow_checks_the_host_and_refuses_a_held_device(tmp_path):
         holder.wait()
     assert held.returncode == 3 and f"{device} is held by: {holder.pid} " in held.stdout
     assert not list((tmp_path / "bench" / "vision").glob("yolox-m-mla400-baseline/run-*"))  # no run started
+
+
+def test_rngd_dry_run_runs_the_rngd_card_only(tmp_path):
+    for name in RNGD:
+        base = name.removesuffix("-rngd")
+        proc = _run([name, "--dry-run"], {"R": str(tmp_path / "bench")})
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert f"run_baselines.sh rngd {base}" in proc.stdout and "run_baselines.sh gpu" not in proc.stdout
+        assert f"llm/{base}.rngd-furiosa.speed" in proc.stdout and f"llm/{base}.rngd-furiosa.mmlu" in proc.stdout
+        assert "gpu0-vllm" not in proc.stdout and f"tables/{name}.metrics.csv" in proc.stdout
+        for kind in ("speed", "mmlu"):
+            assert (REPO_ROOT / f"configs/llm/experiments/{base}.rngd-furiosa.{kind}.yaml").is_file()
+        assert _datasets(proc.stdout) == ["speed-s1-s5 (synthetic token IDs)", "mmlu-1000 (1,000 items)"]
+    assert not (tmp_path / "bench").exists()
+
+
+def test_llama_flow_one_device_per_name_and_existing_runs_refused_per_device(tmp_path):
+    for name, text in (("run_baselines.sh", STUB_LLM), ("python", STUB_LLM_TABLE)):
+        (tmp_path / name).write_text(text)
+        (tmp_path / name).chmod(0o755)
+    out = tmp_path / "bench"
+    env = {"R": str(out), "REPS": "2", "PY": str(tmp_path / "python"), "MARK": str(tmp_path / "MARK"),
+           "LLM_BASELINES": str(tmp_path / "run_baselines.sh"), **{k: str(tmp_path / k.lower()) for k in LLM_ENV}}
+    rngd = _run(["llama-3.2-1b-instruct-rngd"], env)
+    assert rngd.returncode == 0, rngd.stdout + rngd.stderr
+    assert "llama-3.2-1b-instruct-rngd: rngd (speed 2 runs + MMLU 1 run)" in rngd.stdout
+    assert "llama-3.2-1b-instruct-rngd: 3/3 runs completed" in rngd.stdout
+    assert len(list((out / "llm").glob("llama-3.2-1b-instruct.rngd-furiosa.speed/run-*"))) == 2
+    assert not list((out / "llm").glob("*.gpu0-vllm.*"))
+    table = (out / "tables" / "llama-3.2-1b-instruct-rngd.metrics.csv").read_text()
+    assert "rngd-furiosa.speed" in table and "rngd-furiosa.mmlu" in table and "gpu0-vllm" not in table
+    gpu = _run(["llama-3.2-1b-instruct"], env)  # the RNGD runs of the model in the same R do not block the GPU
+    assert gpu.returncode == 0, gpu.stdout + gpu.stderr
+    assert "llama-3.2-1b-instruct: gpu (speed 2 runs + MMLU 1 run)" in gpu.stdout
+    table = (out / "tables" / "llama-3.2-1b-instruct.metrics.csv").read_text()
+    assert "gpu0-vllm.speed" in table and "gpu0-vllm.mmlu" in table and "rngd-furiosa" not in table
+    again = _run(["llama-3.2-1b-instruct-rngd"], env)
+    assert again.returncode == 3 and "already has runs of llama-3.2-1b-instruct.rngd-furiosa" in again.stdout
+

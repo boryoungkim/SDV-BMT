@@ -9,10 +9,10 @@ It is made from evaluated runs after `run` and `evaluate`. It measures nothing a
 table. The GPU / RNGD models run on the reference host, the Mobilint MLA400 models on the host of the MLA400 card.
 
 ```sh
-tools/run_model.sh list                 # the model names (12 GPU / RNGD, then 5 MLA400)
+tools/run_model.sh list                 # the model names (12 on the GPU, 3 on the RNGD card, 5 on the MLA400)
 tools/run_model.sh yolox-s              # one model (validate, 5 runs, evaluate, table)
 tools/run_model.sh yolox-s --dry-run    # print the commands only; uses no device and writes nothing
-tools/run_model.sh all                  # the 12 GPU / RNGD models in order; a failed model does not stop the others
+tools/run_model.sh all                  # the 12 models on the GPU in order; a failed model does not stop the others
 tools/run_model.sh all-mla400           # the 5 MLA400 models in order, on the MLA400 host
 ```
 
@@ -29,8 +29,13 @@ What each model runs:
 |---|---|---|
 | `yolox-{tiny,s,m,l,x}`, `deeplabv3plus-{r18,r50,r101}` | `configs/experiments/<model>-baseline.yaml`, `REPS` runs | `sdv-bmt-model-metric-set-v1.1` |
 | `centerpoint-pillar02` | `centerpoint-pillar02-mini-baseline.yaml` (`REPS` runs) and the run series `centerpoint-pillar02-val-series.yaml` (once) | `sdv-bmt-model-metric-set-v1.2` |
-| `llama-3.2-1b-instruct`, `llama-3.2-3b-instruct`, `llama-3.1-8b-instruct` | `tools/llm/run_baselines.sh gpu` then `rngd`: per device `REPS` speed runs and one MMLU run | `sdv-bmt-llm-v1` |
+| `llama-3.2-1b-instruct`, `llama-3.2-3b-instruct`, `llama-3.1-8b-instruct` | on the GPU: `tools/llm/run_baselines.sh gpu`, `REPS` speed runs and one MMLU run | `sdv-bmt-llm-v1` |
+| `llama-3.2-1b-instruct-rngd`, `llama-3.2-3b-instruct-rngd`, `llama-3.1-8b-instruct-rngd` | on the FuriosaAI RNGD card: `tools/llm/run_baselines.sh rngd`, `REPS` speed runs and one MMLU run | `sdv-bmt-llm-v1` |
 | `yolox-{tiny,s,m,l,x}-mla400` | `configs/experiments/<model>-baseline.yaml` on the Mobilint MLA400, `REPS` runs | `sdv-bmt-model-metric-set-v1.1` |
+
+A Llama model runs on one device per name, and its table holds that device only (`tables/llama-<m>.metrics.csv` for
+the GPU, `tables/llama-<m>-rngd.metrics.csv` for the RNGD card). Existing runs are refused per device, so the GPU and
+RNGD runs of a model can share one results root.
 
 Before an MLA400 model starts, the script checks that the native runner `sdv-bmt-native-mobilint` is built
 (`tools/mobilint/build_native.sh`), that the device node of the DUT config exists and that the compiled models
@@ -55,6 +60,10 @@ logs/<model>.log                    everything the commands printed
 tables/<model>.metrics.csv          the metric table
 tables/<model>.console.txt          the representative metrics as printed
 ```
+
+To read a table, `tools/show_metrics.py --headline FILE.csv [...]` prints the row counts and headline rows of each
+file, and `tools/show_metrics.py FILE.csv` every model row per experiment and layer, with times in milliseconds and
+the status counts. It only reads the files.
 
 ## Making a table from evaluated runs
 

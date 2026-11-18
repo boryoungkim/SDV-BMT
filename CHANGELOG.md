@@ -50,8 +50,11 @@ All notable changes to SDV-BMT are recorded here. Versions follow semantic versi
   and catalog. Raw files and evaluation records are re-verified against the bundle manifests, and a table is never
   overwritten. The commands print the representative metrics as a table, followed by the path of the CSV file.
   `tools/run_model.sh <model>` runs one model end to end (validation, `REPS` timed runs, evaluation, table) with a
-  progress bar, after a start header that names the models and their datasets; `all` runs the 12 GPU / RNGD
-  models, `all-mla400` the five Mobilint MLA400 YOLOX plans on the NPU host.
+  progress bar, after a start header that names the models and their datasets. A Llama model runs on one device
+  per name: `llama-<m>` on the GPU (vLLM), `llama-<m>-rngd` on the FuriosaAI RNGD card (furiosa-llm), and existing
+  runs are refused per device. `all` runs the 12 models on the GPU, `all-mla400` the five Mobilint MLA400 YOLOX
+  plans on the NPU host. `tools/show_metrics.py` shows metric tables in a readable form (headline rows, or every
+  model row per experiment and layer with times in ms).
 
 ## [0.1.2] — 2026-11-10
 
