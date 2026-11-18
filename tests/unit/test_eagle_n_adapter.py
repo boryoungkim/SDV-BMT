@@ -37,7 +37,9 @@ def test_plugin_preserves_canonical_workload(model):
 @pytest.mark.parametrize('model',EAGLE_MODELS)
 def test_native_plan_identity_and_bindings(model):
  work=load_yaml_strict(ROOT/f'configs/workloads/deeplabv3plus-{model}-cityscapes-v1-eagle-n.yaml')
- p=work['options']['device_program'];plan=json.loads(Path(p['plan']).read_text());blob=Path(p['weights']).read_bytes()
+ p=work['options']['device_program']
+ if not Path(p['plan']).exists():pytest.skip('NOT RUN: Eagle-N assets not present on this host')
+ plan=json.loads(Path(p['plan']).read_text());blob=Path(p['weights']).read_bytes()
  assert plan['onnx_sha256']==work['artifact_sha256'] and plan['logical_convs']=={'r18':37,'r50':70,'r101':121}[model]
  for op in plan['ops']:
   if op['kind']=='Conv':
@@ -109,6 +111,7 @@ def test_actual_launcher_refuses_stale_qualification_before_any_subprocess(monke
 
 def test_sdk_dependency_drift_blocks_before_native_describe(config,monkeypatch):
  import sdv_bmt.dut.eagle_n.adapter as a
+ if not Path(config['runtime_options']['executor']).exists():pytest.skip('NOT RUN: Eagle-N executor not present on this host')
  dut=EagleNDUT(parse_strict(DUTConfig,config));real=a.file_sha
  def drift(path):
   return '0'*64 if path.endswith('/libtt_metal.so') else real(path)
