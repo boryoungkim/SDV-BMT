@@ -41,6 +41,18 @@ def _run(args, env=None):
                           timeout=120)
 
 
+def _datasets(stdout):
+    """The dataset lines of the start header: the values from the "dataset(s)" line to the next labelled line."""
+    lines = stdout.splitlines()
+    start = next(i for i, line in enumerate(lines) if line.startswith(("  dataset ", "  datasets ")))
+    values = [lines[start][19:]]
+    for line in lines[start + 1:]:
+        if not line.startswith(" " * 19):
+            break
+        values.append(line[19:])
+    return values
+
+
 def test_list_names_the_12_models_and_the_5_mla400_models():
     proc = _run(["list"])
     assert proc.returncode == 0 and proc.stdout.split() == MODELS + MLA400
@@ -66,6 +78,10 @@ def test_dry_run_checks_every_configuration_and_writes_nothing(tmp_path):
         for c in REPO_ROOT.glob(f"configs/llm/experiments/{name}.*.yaml"):
             assert c.is_file()
     assert proc.stdout.count("sdv_bmt.cli.table") == 9 and proc.stdout.count("sdv_bmt.llm table") == 3
+    assert _datasets(proc.stdout) == [  # under the models line, each once, as the result table writes them
+        "coco-val2017-first1000-416 (1,000 items)", "coco-val2017-first1000 (1,000 items)",
+        "cityscapes-val500 (500 items)", "nuscenes-mini-val4 (162 items)", "nuscenes-val (6,019 items)",
+        "speed-s1-s5 (synthetic token IDs)", "mmlu-1000 (1,000 items)"]
 
 
 def test_flow_with_stub_commands_refuses_existing_runs_and_a_held_marker(tmp_path):
@@ -82,6 +98,7 @@ def test_flow_with_stub_commands_refuses_existing_runs_and_a_held_marker(tmp_pat
     assert "run 2/2  completed/valid" in proc.stdout and "evaluated 2 (sdv-bmt-model-metric-set-v1.1)" in proc.stdout
     assert (out / "tables" / "yolox-s.metrics.csv").is_file()
     assert "DUT service time (median) - 1.000 ms" in proc.stdout
+    assert "  models           yolox-s\n  dataset          coco-val2017-first1000 (1,000 items)\n" in proc.stdout
     assert not mark.exists()  # the marker is released
     again = _run(["yolox-s"], env)
     assert again.returncode == 3 and "already has runs" in again.stdout
@@ -104,6 +121,7 @@ def test_mla400_dry_run_names_the_plans_the_device_and_the_compiled_models(tmp_p
         assert f"{name}: NPU /dev/aries2, compiled model " in proc.stdout and f"yolox_{short}_head9.mxq" in proc.stdout
     assert proc.stdout.count("--catalog sdv-bmt-model-metric-set-v1.1") == 5
     assert proc.stdout.count("sdv_bmt.cli.table") == 5 and "llama" not in proc.stdout
+    assert _datasets(proc.stdout) == ["coco-val2017-first1000-416 (1,000 items)", "coco-val2017-first1000 (1,000 items)"]
 
 
 def test_mla400_flow_checks_the_host_and_refuses_a_held_device(tmp_path):

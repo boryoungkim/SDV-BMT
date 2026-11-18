@@ -306,6 +306,42 @@ run_one() {  # model -> 0 ok, 1 failed, 3 refused; ELAPSED = seconds taken
 
 known() { local m; for m in "${MODELS[@]}" "${MLA400[@]}"; do [ "$m" = "$1" ] && return 0; done; return 1; }
 
+plans_of() {  # model: the plan files its runs use
+  case $1 in
+    centerpoint-pillar02) echo configs/experiments/centerpoint-pillar02-{mini-baseline,val-series}.yaml ;;
+    llama-*) echo configs/llm/experiments/"$1".{gpu0-vllm,rngd-furiosa}.{speed,mmlu}.yaml ;;
+    *) echo configs/experiments/"$1"-baseline.yaml ;;
+  esac
+}
+
+thousands() { local n=$1 out=""; while [ ${#n} -gt 3 ]; do out=",${n: -3}$out"; n=${n:0:${#n}-3}; done; echo "$n$out"; }
+
+dataset_of() {  # plan: its input data, written as the dataset line of the result table (read from the configs)
+  local dir f n; dir=$(dirname "$1")
+  [ -f "$1" ] || return 0
+  case $1 in
+    configs/llm/*)  # MMLU: the item list and its item count; speed: the workload file of synthetic token IDs
+      f=$(yaml_value "$1" items_file | tr -d '"')
+      if [ -n "$f" ]; then
+        n=$(grep -o '"item_id"' "$dir/$f" 2>/dev/null | wc -l); f=$(basename "$f")
+        echo "${f%%.*} ($(thousands "$n") items)"
+      else
+        f=$(basename "$(yaml_value "$1" file | tr -d '"')"); echo "${f%%.*} (synthetic token IDs)"
+      fi ;;
+    *)  # the input set of the plan: its identifier and item count
+      f=$dir/$(yaml_value "$1" input); n=$(yaml_value "$f" count)
+      echo "$(yaml_value "$f" input_id)${n:+ ($(thousands "$n") items)}" ;;
+  esac
+}
+
+print_datasets() {  # model...: the input data of the given models, each once, under the models line
+  local -a ds=(); local m p label=dataset
+  mapfile -t ds < <(for m in "$@"; do for p in $(plans_of "$m"); do dataset_of "$p"; done; done | awk '!seen[$0]++')
+  [ ${#ds[@]} -gt 1 ] && label=datasets
+  printf '  %-16s %s\n' "$label" "${ds[0]:--}"
+  for p in "${ds[@]:1}"; do printf '  %-16s %s\n' "" "$p"; done
+}
+
 usage() { sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; }
 
 main() {
@@ -329,6 +365,7 @@ main() {
   printf '  %-16s %s\n' "results" "$(realpath -m "$R")" "runs per model" "$REPS" "models" "$(case $target in
     all) echo "all ${#MODELS[@]} (GPU / RNGD)" ;; all-mla400) echo "all ${#MLA400[@]} (Mobilint MLA400)" ;;
     *) echo "$target" ;; esac)"
+  if [ ${#group[@]} = 0 ]; then print_datasets "$target"; else print_datasets "${group[@]}"; fi
   [ $DRY = 1 ] && printf '  %-16s %s\n' "mode" "dry run (prints the commands; nothing is executed)"
   if [ ${#group[@]} = 0 ]; then section "$target"; run_one "$target"; exit $?; fi
 

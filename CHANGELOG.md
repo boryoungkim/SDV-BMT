@@ -50,8 +50,8 @@ All notable changes to SDV-BMT are recorded here. Versions follow semantic versi
   and catalog. Raw files and evaluation records are re-verified against the bundle manifests, and a table is never
   overwritten. The commands print the representative metrics as a table, followed by the path of the CSV file.
   `tools/run_model.sh <model>` runs one model end to end (validation, `REPS` timed runs, evaluation, table) with a
-  progress bar; `all` runs the 12 GPU / RNGD models, `all-mla400` the five Mobilint MLA400 YOLOX plans on the NPU
-  host.
+  progress bar, after a start header that names the models and their datasets; `all` runs the 12 GPU / RNGD
+  models, `all-mla400` the five Mobilint MLA400 YOLOX plans on the NPU host.
 
 ## [0.1.2] — 2026-11-10
 
