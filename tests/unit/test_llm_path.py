@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import csv
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -159,3 +161,108 @@ def test_request_times_use_observed_first_item():
     assert request_times(dict(base, status="error")) is None
     single = request_times(dict(base, arrival_ns=[100], arrival_tokens=[1], t_done_ns=100))
     assert "tpot_ns" not in single and single["n_out"] == 1
+
+
+# ---------------------------------------------------------------- metric table (python -m sdv_bmt.llm table)
+
+
+def _fake_mmlu_cfg(tmp_path: Path) -> Path:
+    rows = []
+    for k in range(4):
+        ids = [BOS_TOKEN_ID, 10 + k, 20 + k]
+        rows.append({"item_id": f"test/{k}", "subject": "x", "answer": k % 4, "item_sha256": f"{k:064x}",
+                     "input_token_ids": ids, "input_token_ids_sha256": token_ids_sha256(ids)})
+    pf = tmp_path / "p.jsonl"
+    pf.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    items = tmp_path / "items.json"
+    items.write_text(json.dumps({"items": [{"item_id": r["item_id"], "subject": "x", "item_sha256": r["item_sha256"]}
+                                           for r in rows]}))
+    wl = f"workload: {{kind: mmlu, file: {pf}, sha256: {file_sha256(pf)}, items_file: {items}, warmup: 1}}\n"
+    return _fake_cfg(tmp_path, "tq", {"answer_letters": True}, wl)
+
+
+@pytest.fixture
+def llm_experiments(tmp_path) -> tuple[Path, Path]:
+    speed_cfg, out = _fake_cfg(tmp_path, "ts", {}, _speed_workload()), tmp_path / "out"
+    for _ in range(2):
+        evaluate(run_once(speed_cfg, out))
+    evaluate(run_once(_fake_mmlu_cfg(tmp_path), out))
+    return out / "ts", out / "tq"
+
+
+def test_llm_metric_table_copies_the_evaluations(llm_experiments):
+    from sdv_bmt.llm.table import build_table
+    from sdv_bmt.metrics.table import HEADLINE_ROW, MODEL_ROW, RUN_ROW
+
+    speed, quality = llm_experiments
+    rows = build_table([speed, quality])
+    kinds = [r["row"] for r in rows]
+    assert kinds == [HEADLINE_ROW] * 4 + [MODEL_ROW] * kinds.count(MODEL_ROW) + [RUN_ROW] * kinds.count(RUN_ROW)
+    heads = {r["metric_id"]: r for r in rows[:4]}
+    assert list(heads) == ["llm.S3.ttft_ns.p50", "llm.S3.tpot_ns.p50", "llm.S3.e2e_ns.p50", "llm.mmlu.accuracy"]
+    by_model = {(r["experiment_id"], r["metric_id"]): r for r in rows if r["row"] == MODEL_ROW}
+    assert heads["llm.S3.ttft_ns.p50"]["value"] == by_model[("ts", "llm.S3.ttft_ns.p50")]["value"] / 1_000_000
+    assert heads["llm.S3.ttft_ns.p50"]["unit"] == "ms" and heads["llm.S3.ttft_ns.p50"]["metric_name"]
+    assert heads["llm.mmlu.accuracy"]["value"] == by_model[("tq", "llm.mmlu.accuracy")]["value"]
+    runs = sorted(p for p in speed.glob("run-*"))
+    values = []
+    for run_dir in runs:
+        m = latest_metrics(run_dir)
+        mine = {r["metric_id"]: r for r in rows if r["row"] == RUN_ROW and r["run_id"] == run_dir.name}
+        assert mine["llm.S1.ttft_ns.p50"]["value"] == m["speed"]["S1"]["ttft_ns"]["median_p50"]["value"]
+        assert mine["llm.S3.decode_tps.min"]["value"] == m["speed"]["S3"]["decode_tps"]["min"]
+        assert mine["llm.S5.count.fixed_length_ok"]["value"] == m["speed"]["S5"]["counts"]["fixed_length_ok"]
+        assert (mine["llm.S2.e2e_ns.p99"]["status"], mine["llm.S2.e2e_ns.p99"]["value"]) == \
+            ("insufficient_samples", None)
+        assert mine["llm.control.prefix_caching"]["value"] == "confirmed_off"
+        assert {r["eval_id"] for r in mine.values()} == {m["eval_id"]}
+        assert {r["task"] for r in mine.values()} == {"llm-speed"}
+        values.append(m["speed"]["S1"]["ttft_ns"]["median_p50"]["value"])
+    model = {r["metric_id"]: r for r in rows if r["row"] == MODEL_ROW and r["experiment_id"] == "ts"}
+    entry = model["llm.S1.ttft_ns.p50"]
+    assert (entry["value"], entry["min"], entry["max"], entry["n_valid"]) == \
+        ((values[0] + values[1]) / 2, min(values), max(values), 2)
+    assert model["llm.S2.e2e_ns.p99"]["status"] == "insufficient_samples"
+    q = latest_metrics(next(quality.glob("run-*")))["quality"]
+    mmlu_rows = {r["metric_id"]: r for r in rows if r["row"] == RUN_ROW and r["experiment_id"] == "tq"}
+    assert mmlu_rows["llm.mmlu.accuracy"]["value"] == q["accuracy"]
+    assert mmlu_rows["llm.mmlu.count.unparsable"]["value"] == q["counts"]["unparsable"]
+    assert {r["task"] for r in mmlu_rows.values()} == {"llm-mmlu"}
+
+
+def test_llm_metric_table_command_and_refusals(llm_experiments, tmp_path, capsys):
+    from sdv_bmt.llm.cli import main
+    from sdv_bmt.llm.table import LlmReportError, build_table
+
+    speed, quality = llm_experiments
+    out = tmp_path / "metrics.csv"
+    assert main(["table", str(speed), str(quality), "--out", str(out)]) == 0
+    captured = capsys.readouterr()
+    assert json.loads(captured.out)["experiments"] == 2 and "ts, tq" in captured.err
+    assert "MMLU accuracy" in captured.err and "llm.S3" not in captured.err
+    assert f"see the CSV file:\n  {out.resolve()}\n" in captured.err
+    assert out.read_text().startswith("row,task,dataset,model,device,experiment_id,run_id,eval_id,catalog_version,"
+                                      "metric_name")
+    datasets = {r["experiment_id"]: r["dataset"] for r in csv.DictReader(out.open())}
+    assert datasets["ts"] == "speed-s1-s5 (synthetic token IDs)" and re.fullmatch(r"items \(\d+ items\)", datasets["tq"])
+    assert "dataset      speed-s1-s5 (synthetic token IDs); items (" in captured.err
+    assert main(["table", str(speed), "--out", str(out)]) == 2  # never overwritten
+    with pytest.raises(LlmReportError, match="experiment given twice"):
+        build_table([speed, speed])
+    with pytest.raises(LlmReportError, match="not an LLM experiment"):
+        build_table([tmp_path])
+    run_dir = sorted(speed.glob("run-*"))[0]
+    metrics = next(run_dir.glob("evaluations/*/metrics.json"))
+    original = metrics.read_bytes()
+    metrics.write_text(metrics.read_text().replace('"confirmed_off"', '"unverified"', 1))
+    with pytest.raises(LlmReportError, match="metrics.json differs from its eval_manifest.json record"):
+        build_table([speed])
+    metrics.write_bytes(original)
+    with open(run_dir / "requests.jsonl", "a") as fh:
+        fh.write("\n")
+    with pytest.raises(LlmReportError, match="changed or missing"):
+        build_table([speed])
+    evaluate(run_once(tmp_path / "tq.yaml", tmp_path / "out"))  # a further evaluated run is fine
+    next_run = run_once(tmp_path / "tq.yaml", tmp_path / "out")  # ... a run without evaluation is not
+    with pytest.raises(LlmReportError, match="no evaluation"):
+        build_table([next_run.parent])

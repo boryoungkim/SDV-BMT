@@ -170,6 +170,20 @@ def _staging_dir() -> str:
     return "/dev/shm" if os.path.isdir("/dev/shm") and os.access("/dev/shm", os.W_OK) else tempfile.gettempdir()
 
 
+def measure_limit_s(schedule: dict[str, Any], run: dict[str, Any], precondition_requests: int,
+                    planned_items: int) -> float:
+    """Upper bound in seconds for the native runner's MEASURE/DRAIN reply (the runner is killed after it).
+
+    A fixed-rate or recorded schedule spans every arrival.  An asap schedule has no offsets: its requests follow
+    each other, so each of the planned items may take up to ``request_timeout``.  Then the drain, the untimed
+    precondition requests (each up to ``request_timeout``) and a fixed 120 s margin."""
+    offsets = schedule.get("offsets_ns") or [0]
+    span_s = (max(offsets) + schedule["lead_ns"]) / 1e9
+    timeout_s = run["request_timeout_ns"] / 1e9
+    back_to_back_s = max(1, planned_items) * timeout_s if schedule["mode"] == "asap" else 0.0
+    return span_s + back_to_back_s + run["drain_ns"] / 1e9 + precondition_requests * timeout_s + 120.0
+
+
 class NativeRealtimeAdapter:
     """Base of the native DUT adapters: lifecycle over the phase protocol.
 
@@ -195,6 +209,7 @@ class NativeRealtimeAdapter:
         self._staging: Optional[Any] = None
         self._staging_path: Optional[str] = None
         self._staged: list[NativePreparedInput] = []
+        self._planned_items = 0
         self._state = "created"
         self.prepare_facts: dict[str, Any] = {}
         self.realized_affinity: tuple[int, ...] = ()
@@ -285,6 +300,7 @@ class NativeRealtimeAdapter:
             if output_contexts is not None and index in output_contexts:
                 row["output_context"] = output_contexts[index]
             items.append(row)
+        self._planned_items = len(items)
         try:
             reply = self._process.command({"command": "stage", "path": self._staging_path, "items": items},
                                           self.STAGE_TIMEOUT_S)
@@ -304,11 +320,7 @@ class NativeRealtimeAdapter:
         if self._state != "staged" or self._process is None or self._context is None:
             raise LifecycleError("run_window() requires staged inputs")
         ctx = self._context
-        offsets = ctx.schedule.get("offsets_ns") or [0]
-        span_s = (max(offsets) + ctx.schedule["lead_ns"]) / 1e9
-        n = max(1, len(offsets))
-        limit = (span_s + n * ctx.run["request_timeout_ns"] / 1e9 * (1 if ctx.schedule["mode"] == "asap" else 0)
-                 + ctx.run["drain_ns"] / 1e9 + ctx.precondition_requests * ctx.run["request_timeout_ns"] / 1e9 + 120.0)
+        limit = measure_limit_s(ctx.schedule, ctx.run, ctx.precondition_requests, self._planned_items)
         reply = self._process.command({"command": "measure", "next_seq": handover.next_seq,
                                        "last_t_run_ns": handover.last_t_run_ns,
                                        "output_offset": handover.output_offset}, limit)

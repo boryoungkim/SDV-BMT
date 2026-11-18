@@ -166,6 +166,9 @@ HF_HOME=<HF cache holding the furiosa-ai 8B artifact> tools/llm/run_baselines.sh
 # 4) Summaries
 python3 -m sdv_bmt.llm aggregate runs/llm-llama/<experiment>/run-* --out <summary.json>
 python3 -m sdv_bmt.llm compare <GPU MMLU run> <RNGD MMLU run> --out <compare.json>
+
+# 5) Metric table (docs/metric_table.md): representative metrics first, then the overall result per metric, then one row per run
+python3 -m sdv_bmt.llm table runs/llm-llama/<experiment> [...] --out <metrics.csv>
 ```
 
 `run_baselines.sh` writes `runs/TIMED_RUN_IN_PROGRESS` while it runs, and checks that the device is idle

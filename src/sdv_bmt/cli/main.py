@@ -102,8 +102,8 @@ EXIT_RUN_FAILED = 1
 EXIT_REJECTED = 2
 
 
-ACTUAL_NOTICE = ("ACTUAL: executed on a real accelerator; reference-accelerator validation, "
-                 "not an NPU performance result")
+ACTUAL_NOTICE = ("ACTUAL: executed on a real accelerator; the bundle's device identity names the DUT "
+                 "(a GPU run is reference-accelerator validation)")
 
 
 def _notice(kind: Optional[str], realtime: bool = False) -> Optional[str]:

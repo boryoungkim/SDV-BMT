@@ -42,6 +42,29 @@ All notable changes to SDV-BMT are recorded here. Versions follow semantic versi
   `docs/llm_benchmark.md`. Results: `docs/results/llm-llama3-gpu-rngd-result.md`. The architecture tests name the
   LLM package's exceptions per module (host clock and asyncio in `llm/runner.py`, asyncio and lazily imported
   runtimes in `llm/backends.py`); the rules for all other packages are unchanged.
+- **Metric table and one-command runs.** `python -m sdv_bmt.cli.table DIR [DIR ...] --out FILE.csv` (CNN / LiDAR
+  experiments and run series) and `python -m sdv_bmt.llm table DIR [DIR ...] --out FILE.csv` (LLM experiments) write
+  one metric table (`docs/metric_table.md`): four representative metrics per model under readable names first, then
+  the overall result per experiment and metric (median, min and max over the valid runs), then one row per run and
+  metric copied unchanged from the newest evaluation. Every row names the task, dataset, model, device, experiment
+  and catalog. Raw files and evaluation records are re-verified against the bundle manifests, and a table is never
+  overwritten. The commands print the representative metrics as a table, followed by the path of the CSV file.
+  `tools/run_model.sh <model>` runs one model end to end (validation, `REPS` timed runs, evaluation, table) with a
+  progress bar, after a start header that names the models and their datasets. A Llama model runs on one device
+  per name: `llama-<m>` on the GPU (vLLM), `llama-<m>-rngd` on the FuriosaAI RNGD card (furiosa-llm), and existing
+  runs are refused per device. `all` runs the 12 models on the GPU, `all-mla400` the five Mobilint MLA400 YOLOX
+  plans on the NPU host, and `centerpoint-pillar02-mini` runs CenterPoint on the 162 mini samples only (no val run
+  series). `tools/show_metrics.py` shows metric tables in a readable form (headline rows, or every
+  model row per experiment and layer with times in ms).
+
+### Fixed
+
+- **Measure watchdog of the native adapters with `asap` replay.** The time limit for the native runner's
+  MEASURE/DRAIN reply counted an `asap` window as one request, so any `asap` window was killed after a fixed time
+  whatever its item count (about 154 s with a 1 s request timeout and 32 precondition requests). It now allows one
+  request timeout per planned item. Fixed-rate and recorded schedules are unchanged.
+- **CLI notice of ACTUAL runs** no longer says "not an NPU performance result"; it says that the bundle's device
+  identity names the DUT (a GPU run is reference-accelerator validation).
 
 ## [0.1.2] — 2026-11-10
 
