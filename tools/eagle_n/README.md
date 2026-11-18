@@ -65,8 +65,11 @@ The maximum time per request of each variant, from its L1 evidence, must stay be
 
 Checked on the NPU for R-50 BF16 on 2026-11-18 (`run_eagle_n.sh`-equivalent L3 with
 `deeplabv3plus-r50-eagle-n-bf16-capture-asap-t60.yaml`): 500/500 completed in `asap`, no watchdog stop, no timeout,
-mIoU equal to L1, and the extracted golden identical to the golden of the earlier `fixed_rate` captures. R-18 and
-R-101 with their `asap-t60` plans are still to be run.
+mIoU equal to L1, and the extracted golden identical to the golden of the earlier `fixed_rate` captures.
+R-18 and R-101 were not rerun with their `asap-t60` plans. They are expected to pass (inferred, not measured): they
+use the same mechanism and executor family, back-to-back `asap` requests were as fast as paced ones on R-50, and the
+largest request time observed for each of them in its L3–L5 evidence is below the 4.06 s budget. R-101 has the
+smallest margin of the three; recheck the budget against the L1 evidence after any change to its plan or executor.
 
 Cost of this choice: a request that hangs is declared timed out only after 60 s instead of 1 s. The 1 s of the GPU
 copy cannot be kept on Eagle-N in any case, because one R-50 or R-101 request takes longer than 1 s. The value 60 s
