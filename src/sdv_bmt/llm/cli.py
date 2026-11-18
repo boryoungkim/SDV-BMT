@@ -9,6 +9,10 @@
     evaluate RUN_DIR                              bundle-only evaluation (catalog sdv-bmt-llm-v1)
     compare REF_RUN OTHER_RUN --out FILE          MMLU per-item comparison (reference = GPU)
     aggregate RUN_DIR... --out FILE               speed statistics over several evaluated runs
+    table EXPERIMENT_DIR... --out FILE.csv        metric table (docs/metric_table.md): representative metrics
+                                                  under readable names first, then the overall result per
+                                                  metric, then one row per run and metric; the representative
+                                                  metrics are also printed (stderr)
 
 Run with the interpreter of the runtime's own environment and ``PYTHONPATH=src`` (the runtime environments
 are not modified).  Output paths are created exclusively.
@@ -17,6 +21,7 @@ are not modified).  Output paths are created exclusively.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from fractions import Fraction
@@ -24,9 +29,11 @@ from pathlib import Path
 from typing import Optional, Sequence
 
 from ..contracts.ids import pretty_json_bytes, utc_now_iso
+from ..metrics.table import HEADLINE_ROW, MODEL_ROW, format_console
 from . import mmlu
 from .evaluate import evaluate, latest_metrics, stats, verify_bundle
 from .runner import run_once
+from .table import LlmReportError, write_table
 from .workload import file_sha256, read_jsonl, speed_requests, token_ids_sha256, write_jsonl
 
 
@@ -148,6 +155,20 @@ def cmd_aggregate(run_dirs: Sequence[str], out: str) -> int:
     return 0
 
 
+def cmd_table(exp_dirs: Sequence[str], out: str) -> int:
+    try:
+        rows, data = write_table(exp_dirs, out)
+    except (LlmReportError, FileExistsError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(format_console(rows, str(Path(out).resolve())), file=sys.stderr)
+    print(json.dumps({"table": out, "sha256": hashlib.sha256(data).hexdigest(), "rows": len(rows),
+                      "headline_rows": sum(1 for r in rows if r["row"] == HEADLINE_ROW),
+                      "model_rows": sum(1 for r in rows if r["row"] == MODEL_ROW),
+                      "experiments": len({r["experiment_id"] for r in rows})}, indent=1))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="python -m sdv_bmt.llm", description="SDV-BMT LLM benchmark (Python plane)")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -161,6 +182,7 @@ def build_parser() -> argparse.ArgumentParser:
     e = sub.add_parser("evaluate"); e.add_argument("run_dir")
     c = sub.add_parser("compare"); c.add_argument("ref_run"); c.add_argument("other_run"); c.add_argument("--out", required=True)
     g = sub.add_parser("aggregate"); g.add_argument("run_dirs", nargs="+"); g.add_argument("--out", required=True)
+    t = sub.add_parser("table"); t.add_argument("exp_dirs", nargs="+"); t.add_argument("--out", required=True)
     return p
 
 
@@ -182,6 +204,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 0
     if a.cmd == "compare":
         return cmd_compare(a.ref_run, a.other_run, a.out)
+    if a.cmd == "table":
+        return cmd_table(a.exp_dirs, a.out)
     return cmd_aggregate(a.run_dirs, a.out)
 
 

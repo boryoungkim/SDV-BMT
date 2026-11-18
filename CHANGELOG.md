@@ -42,6 +42,16 @@ All notable changes to SDV-BMT are recorded here. Versions follow semantic versi
   `docs/llm_benchmark.md`. Results: `docs/results/llm-llama3-gpu-rngd-result.md`. The architecture tests name the
   LLM package's exceptions per module (host clock and asyncio in `llm/runner.py`, asyncio and lazily imported
   runtimes in `llm/backends.py`); the rules for all other packages are unchanged.
+- **Metric table and one-command runs.** `python -m sdv_bmt.cli.table DIR [DIR ...] --out FILE.csv` (CNN / LiDAR
+  experiments and run series) and `python -m sdv_bmt.llm table DIR [DIR ...] --out FILE.csv` (LLM experiments) write
+  one metric table (`docs/metric_table.md`): four representative metrics per model under readable names first, then
+  the overall result per experiment and metric (median, min and max over the valid runs), then one row per run and
+  metric copied unchanged from the newest evaluation. Every row names the task, dataset, model, device, experiment
+  and catalog. Raw files and evaluation records are re-verified against the bundle manifests, and a table is never
+  overwritten. The commands print the representative metrics as a table, followed by the path of the CSV file.
+  `tools/run_model.sh <model>` runs one model end to end (validation, `REPS` timed runs, evaluation, table) with a
+  progress bar; `all` runs the 12 GPU / RNGD models, `all-mla400` the five Mobilint MLA400 YOLOX plans on the NPU
+  host.
 
 ## [0.1.2] — 2026-11-10
 
