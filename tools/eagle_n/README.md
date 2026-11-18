@@ -90,8 +90,9 @@ A new model or a changed plan has no committed golden yet: after step 11, copy `
 - **Step 11:** every item completed, none timed out or failed, and the evaluate mIoU equals the L1 NPU mIoU in the
   receipt exactly (`CHECK_OK`); the re-extracted golden is identical to the committed one.
 - **Step 12:** identity rate 1.0 against the committed golden (`IDENTITY_OK`).
-- **Step 13:** every run: no timeout or error and identity 1.0 for the completed outputs. The baseline replays the GPU
-  family rate, so dropped requests and deadline misses are reported results, not failures.
+- **Step 13:** every run: no timeout or error and identity 1.0 for the completed outputs. The baseline replays the
+  Eagle-N rate of the model (`BASELINE_RATE_HZ` in `configure.py`: the GPU family rule applied to the Eagle-N
+  capture), so dropped requests and deadline misses are reported results, not failures.
 
 ## Safety rules
 

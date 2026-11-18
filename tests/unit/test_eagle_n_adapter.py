@@ -18,6 +18,7 @@ import pytest
 import yaml
 
 from sdv_bmt.contracts.specs import DUTConfig, WorkloadSpec, parse_strict
+from sdv_bmt.runner.plan import frame_period_ns
 from sdv_bmt.contracts.status import CompletionModel
 from sdv_bmt.dut.eagle_n import adapter as eagle
 from sdv_bmt.dut.eagle_n.adapter import EagleNDUT, EagleNOptions, EagleNProgram
@@ -160,6 +161,15 @@ def test_plans_are_the_gpu_plans_with_one_eagle_n_timeout(name, stage):
         assert _sha(_paths(name)["baseline"].parent / ref["path"]) == ref["sha256"]
         gpu["evaluation"].pop("output_reference")
         eagle_plan["evaluation"].pop("output_reference")
+        # the Eagle-N baseline rate of the model, deadline = its frame period (tools/eagle_n/configure.py)
+        m = _module("eagle_configure_rate", "tools/eagle_n/configure.py")
+        assert eagle_plan["replay"]["rate_hz"] == m.BASELINE_RATE_HZ[model]
+        assert eagle_plan["evaluation"]["deadline"] == {
+            "policy": "frame_period", "period_ns": frame_period_ns(m.BASELINE_RATE_HZ[model])
+        }
+        for d in (eagle_plan, gpu):
+            d["replay"].pop("rate_hz")
+            d["evaluation"]["deadline"].pop("period_ns")
     for d in (eagle_plan, gpu):
         for k in ("experiment_id", "workload", "dut"):
             d.pop(k)

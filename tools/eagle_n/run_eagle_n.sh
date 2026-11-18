@@ -7,7 +7,7 @@
 #            l2     check + in-container describe and validate of the capture and baseline plans (no device)
 #            l3     check + validate + capture (asap) on the NPU + evaluate; mIoU must equal the receipt (L1)
 #            l4     l3 + identity of the new capture against the NPU golden in configs/references (must be 1.0)
-#            l5     check + validate + L5_RUNS baselines (GPU family rate), each: no error or timeout, identity 1.0
+#            l5     check + validate + L5_RUNS baselines (Eagle-N rate), each: no error or timeout, identity 1.0
 #                   (drops and deadline misses are reported, not checked)
 #
 # Environment (defaults: the fixed Eagle-N root /opt/sdv_assets/eagle_n, README "Host setup"):
