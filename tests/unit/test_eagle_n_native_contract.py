@@ -79,7 +79,7 @@ def test_cli_to_native_bundle_and_miou_without_npu(contract_binaries,tmp_path,mo
 def test_real_backend_guards_are_exercised_with_mock_abi(contract_binaries,tmp_path):
     lib,_,_=contract_binaries;exe=tmp_path/'backend_guards'
     subprocess.run(['g++','-std=c++17','-O2',str(ROOT/'tests/eagle_n/backend_guards.cpp'),'-o',str(exe),'-ldl'],check=True)
-    work=yaml.safe_load((ROOT/'configs/workloads/deeplabv3plus-r18-cityscapes-v1-eagle-n.yaml').read_text());p=work['options']['device_program']
+    work=yaml.safe_load(_synthetic_r18_workload(tmp_path).read_text());p=work['options']['device_program']  # no local assets needed (CI)
     program={'plan_path':p['plan'],'plan_sha256':p['plan_sha256'],'weights_path':p['weights'],'weights_sha256':p['weights_sha256'],'artifact_sha256':work['artifact_sha256'],'input_bytes':25165824,'task_output_bytes':2097152}
     opts={'device_id':0,'executor':str(lib),'executor_sha256':sha(lib),'lock_path':str(tmp_path/'lock'),'staging_budget_bytes':25165824}
     r=subprocess.run([str(exe),json.dumps({'backend':{'options':opts},'program':program})],capture_output=True,text=True)
