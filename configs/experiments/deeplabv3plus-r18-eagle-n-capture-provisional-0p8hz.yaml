@@ -1,9 +1,10 @@
-# PROVISIONAL (user decision 2026-11-15, Cao): deviation from guide Step 6 ("copy the GPU capture plan, asap").
+# PROVISIONAL capture plan D1 (2026-11-15): deviation from guide Step 6 ("copy the GPU capture plan, asap").
 # Only change vs deeplabv3plus-r18-eagle-n-capture.yaml: experiment_id and replay asap -> fixed_rate 0.8 Hz.
-# Reason: SDV-BMT native measure watchdog (src/sdv_bmt/dut/native.py:307-311, original, unchanged) gives an asap
-# window 154 s total (n=1); Eagle-N R18 needs ~525 s (986 ms/request). With fixed_rate the watchdog adds the schedule
-# span: 623.75 + 1 + 32 + 120 = 776.75 s vs ~657 s needed. 1.25 s period >= 1.25 x 986.4 ms max run(), so no drops.
-# Pending: Boryoung decision on the watchdog / capture plan; model latency optimization (986 ms > 400 ms) later.
+# Reason: the SDV-BMT measure watchdog (src/sdv_bmt/dut/native.py run_window, unchanged) allows 154 s for the whole
+# asap window; with fixed_rate the schedule span is added: 623.75 + 1 + 32 + 120 = 776.75 s.
+# Period 1.25 s >= 1.25 x the maximum run time of one request, so no drops.
+# Used for the evidence of 2026-11-15. For main, use deeplabv3plus-r18-eagle-n-capture-asap-t60.yaml
+# (see tools/eagle_n/README.md, watchdog section).
 schema_version: 1
 experiment_id: deeplabv3plus-r18-eagle-n-capture-provisional-0p8hz
 execution_kind: actual

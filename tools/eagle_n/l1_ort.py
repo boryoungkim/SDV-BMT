@@ -24,12 +24,27 @@ from sdv_bmt.workload.deeplab import normalize_rgb  # noqa: E402
 from sdv_bmt.workload.yolox import parse_ppm  # noqa: E402
 
 W, H = 2048, 1024
-ONNX = Path('/home/bmt/caontd/eagle_n_porting/deeplab_r18/models/deeplabv3plus_r18.onnx')
-ONNX_SHA = 'd7776aa683a18ca4e09305360f7d7f2857bac1a665dbbbc3aee2c60348450969'   # H04
+# Per variant (--variant, default r18): H04 ONNX, the NPU L1 mIoU it is compared with, GPU FP32 reference.
+VARIANTS = {
+    'r18': {'onnx': Path('/home/bmt/caontd/eagle_n_porting/deeplab_r18/models/deeplabv3plus_r18.onnx'),
+            'onnx_sha': 'd7776aa683a18ca4e09305360f7d7f2857bac1a665dbbbc3aee2c60348450969',
+            'npu_miou_l1': 0.7675648837497185,   # eagle_n_integration_evidence/l1_merged_20261114T183402Z
+            'gpu': 0.767566},
+    'r50': {'onnx': Path('/home/bmt/caontd/eagle_n_porting/deeplab_r50/models/deeplabv3plus_r50.onnx'),
+            'onnx_sha': '6177c7ee37f5ce9779b39cea5defee2f1262fca37e3154ad28b74eadfafdf476',
+            'npu_miou_l1': None,                  # filled from --npu-miou once the R50 L1 NPU merge exists
+            'gpu': 0.798469},
+    'r101': {'onnx': Path('/home/bmt/caontd/eagle_n_porting/deeplab_r101/models/deeplabv3plus_r101.onnx'),
+             'onnx_sha': '86d0f08c1852723892777c0216936e5b790d3b9345f0e83473fb21309c129745',
+             'npu_miou_l1': None,                 # from --npu-miou once the R101 L1 NPU merge exists (2026-11-17)
+             'gpu': 0.808709},                    # guide GPU FP32 table
+}
+ONNX = VARIANTS['r18']['onnx']
+ONNX_SHA = VARIANTS['r18']['onnx_sha']   # H04
 CLASSES = ['road', 'sidewalk', 'building', 'wall', 'fence', 'pole', 'traffic light', 'traffic sign', 'vegetation',
            'terrain', 'sky', 'person', 'rider', 'car', 'truck', 'bus', 'train', 'motorcycle', 'bicycle']
-NPU_MIOU_L1 = 0.7675648837497185   # eagle_n_integration_evidence/l1_merged_20261114T183402Z
-GPU_FP32_MIOU = 0.767566
+NPU_MIOU_L1 = VARIANTS['r18']['npu_miou_l1']
+GPU_FP32_MIOU = VARIANTS['r18']['gpu']
 
 
 def sha(b: bytes) -> str:
@@ -164,7 +179,7 @@ def score(a, lines, index_bytes, rng) -> int:
                   'items_identical': sum(r['different_pixels'] == 0 for r in rows.values()),
                   'worst_items': sorted((r['agreement'], r['item_index'], r['source_item_id']) for r in rows.values())[:5]},
               'ort_fp32_miou': miou, 'npu_miou_l1': NPU_MIOU_L1, 'gpu_fp32_miou_reference': GPU_FP32_MIOU,
-              'npu_minus_ort_miou': NPU_MIOU_L1 - miou,
+              'npu_minus_ort_miou': None if NPU_MIOU_L1 is None else NPU_MIOU_L1 - miou,
               'ort_per_class_iou': {CLASSES[c]: v for c, v in ious.items()},
               'ort_counts': {'tp': total.tp, 'fp': total.fp, 'fn': total.fn, 'valid_pixels': total.pixels},
               'ort_ms_cpu': {'min': ms[0], 'p50': ms[len(ms) // 2], 'max': ms[-1]},
@@ -187,7 +202,13 @@ def main() -> int:
     ap.add_argument('--npu', type=Path, nargs='+', help='l1_native output dirs (items.jsonl + labels.rle)')
     ap.add_argument('--out', type=Path)
     ap.add_argument('--threads', type=int, default=4)
+    ap.add_argument('--variant', choices=sorted(VARIANTS), default='r18')
+    ap.add_argument('--npu-miou', type=float, help='NPU L1 mIoU to compare with (default: known value per variant)')
     a = ap.parse_args()
+    global ONNX, ONNX_SHA, NPU_MIOU_L1, GPU_FP32_MIOU
+    v = VARIANTS[a.variant]
+    ONNX, ONNX_SHA, GPU_FP32_MIOU = v['onnx'], v['onnx_sha'], v['gpu']
+    NPU_MIOU_L1 = a.npu_miou if a.npu_miou is not None else v['npu_miou_l1']
     start, count = (int(x) for x in a.range.split(':'))
     index_bytes = a.index.read_bytes()
     lines = index_bytes.decode().splitlines()

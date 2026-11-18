@@ -22,6 +22,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 VALIDATED = '621089306df561378d3c9aa56901184eda76c79ac46a156e7deaf6ce07935168'
+# R50 (INTERNAL anchor, 2026-11-16): the L0 device labels of the standalone golden image (evidence log §48,
+# l1_20261116T143507_881070Z), agreement 0.999115 with the ORT FP32 labels. R50 L1 golden checks are rows with
+# agreement_vs_ort_fp32 >= min_agreement (tools/eagle_n/l1_native.py GOLDENS); here they must also equal this hash.
+R50_L0_LABELS = '3986cee539de634b761fa9cc84564717678f665e7cb44a974bc4e963e4758dcc'
+R101_L0_LABELS = '91e23e4100ac47ddecc1ad905d6a5588a167b665c4f1c7752d4bbb34a23d21c6'   # L0 §64, 2026-11-17
+NONR18_L0_LABELS = {'r50': R50_L0_LABELS, 'r101': R101_L0_LABELS}
 SANITY_BOUND = 0.01
 
 
@@ -64,8 +70,17 @@ def main() -> int:
     for k, v in cur.items():
         need(npu.get(k) == v, f'L1 NPU {k} differs from the current file')
     golden = npu.get('golden_checks', [])
-    need(len(golden) >= 2 and all(g['equals_validated'] and g['labels_sha256'] == VALIDATED for g in golden),
-         'L1 golden checks missing or not equal to the validated labels')
+    variant = prog['variant']
+    need(npu.get('variant', 'r18') == variant, f'L1 NPU variant {npu.get("variant")} differs from workload {variant}')
+    if variant == 'r18':
+        need(len(golden) >= 2 and all(g['equals_validated'] and g['labels_sha256'] == VALIDATED for g in golden),
+             'L1 golden checks missing or not equal to the validated labels')
+    elif variant in NONR18_L0_LABELS:   # r50, r101: same rule, own L0 labels
+        need(len(golden) >= 2 and all(g['labels_sha256'] == NONR18_L0_LABELS[variant] and g['same_as_previous_golden']
+                                      and g['agreement_vs_ort_fp32'] >= g['min_agreement'] >= 0.99 for g in golden),
+             f'L1 golden checks missing, not equal to the {variant.upper()} L0 labels or below the ORT agreement floor')
+    else:
+        need(False, f'no golden rule for variant {variant}')
     evidence = {str(npu_file): fsha(npu_file)}
     covered = []
     for part in map(Path, npu['parts']):

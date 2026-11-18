@@ -1,6 +1,6 @@
-# PROVISIONAL L5 (user decision 2026-11-15, D2): deviation from guide Step 8 (2 Hz family rate; capture DUT-service
-# > 400 ms -> do not start baselines). Eagle-N R18 DUT-service p50 985.9 / max 986.4 ms, so rate 0.8 Hz
-# (period 1.25 s >= 1.25 x max DUT-service, the guide's own rule) and deadline frame_period 1.25 s.
+# PROVISIONAL baseline plan D2 (2026-11-15): deviation from guide Step 8 (2 Hz family rate; DUT-service above 400 ms
+# -> do not start baselines). One R-18 request takes longer than the 0.5 s period of 2 Hz, so: rate 0.8 Hz (period
+# 1.25 s >= 1.25 x the maximum DUT-service, the guide's own rule) and deadline frame_period 1.25 s.
 # Only changes vs deeplabv3plus-r18-eagle-n-baseline.yaml: experiment_id, rate_hz, period_ns. NOT a family-rate baseline.
 schema_version: 1
 experiment_id: deeplabv3plus-r18-eagle-n-baseline-provisional-0p8hz

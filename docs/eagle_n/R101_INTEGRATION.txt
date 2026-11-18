@@ -1,7 +1,7 @@
 SUPERSEDED 2026-11-18: the plain R-101 layout below (assets r101/, plan eca9968a, configs eagle-n-r101.yaml,
 deeplabv3plus-r101-cityscapes-v1-eagle-n.yaml, deeplabv3plus-r101-eagle-n-capture.yaml / -baseline.yaml.in) was removed
-(never qualified). R-101 BF16 (tuned plan, L0-L5 passed provisionally) comes with the R-50/R-101 hand-over.
-The text below is kept as the 2026-11-13 record.
+(never qualified). Current R-101 = BF16 tuned plan: assets r101_bf16/ (plan 5522ef44, weights 7f1f0720, receipt 8ac7a488),
+configs *-r101*-bf16*. R-101 bf16 passed L0-L5 (provisional D5/D6). The text below is kept as the 2026-11-13 record.
 
 EAGLE-N / SDV-BMT R-101 INTEGRATION RECORD
 Date: 2026-11-13

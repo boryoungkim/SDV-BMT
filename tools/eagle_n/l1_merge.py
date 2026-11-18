@@ -3,7 +3,8 @@
 
 mIoU is computed from the SUMMED per-class TP/FP/FN of all items (Cityscapes definition), never as an
 average of partial mIoUs. Requires every item 0..N-1 exactly once, identical executor/plan/weights/index
-digests in all parts, and every golden check equal to the validated labels.
+digests in all parts, and every golden check passing its variant anchor (l1_native.py GOLDENS):
+r18 = equal to the validated labels; r50 = agreement vs ORT FP32 >= floor and one identical hash in all parts.
 """
 from __future__ import annotations
 import argparse, json
@@ -11,7 +12,9 @@ from pathlib import Path
 
 CLASSES = ['road', 'sidewalk', 'building', 'wall', 'fence', 'pole', 'traffic light', 'traffic sign', 'vegetation',
            'terrain', 'sky', 'person', 'rider', 'car', 'truck', 'bus', 'train', 'motorcycle', 'bicycle']
-GPU_FP32_MIOU = 0.767566   # docs/results/v0.1.2-gpu-reference-result.md, R-18, 500 val images
+# docs/results/v0.1.2-gpu-reference-result.md, 500 val images
+GPU_FP32_MIOU = {'r18': 0.767566, 'r50': 0.798469, 'r101': 0.808709}
+G15 = {'bf16': 'proposed drop <= 0.01 for BF16', 'bfp8w': 'proposed drop <= 0.02 for an 8-bit format (bfloat8_b)'}
 
 
 def main() -> int:
@@ -33,6 +36,7 @@ def main() -> int:
         elif this != ident:
             raise SystemExit(f'{p}: digests differ from the first part: {this} vs {ident}')
         golden += rep['golden_checks']
+        variant, precision = rep.get('variant', 'r18'), rep.get('plan_precision', 'bf16')   # pre-2026-11-16 reports: R18
         for line in (p / 'items.jsonl').read_text().splitlines():
             r = json.loads(line)
             if r['item_index'] in seen:
@@ -44,8 +48,12 @@ def main() -> int:
             times.append(r['run_ms'])
     if sorted(seen) != list(range(a.expect)):
         raise SystemExit(f'coverage: {len(seen)} items, missing {sorted(set(range(a.expect)) - set(seen))[:10]}')
-    if not all(g['equals_validated'] for g in golden):
-        raise SystemExit('a golden check differs from the validated labels')
+    if variant == 'r18':
+        if not all(g['equals_validated'] for g in golden):
+            raise SystemExit('a golden check differs from the validated labels')
+    elif not (all(g['agreement_vs_ort_fp32'] >= g['min_agreement'] for g in golden)
+              and len({g['labels_sha256'] for g in golden}) == 1):
+        raise SystemExit('a golden check is below the ORT agreement floor or not identical across parts')
     ious = {}
     for c in range(19):
         u = tp[c] + fp[c] + fn[c]
@@ -54,12 +62,14 @@ def main() -> int:
     miou = sum(present) / len(present)
     s = sorted(times)
     result = {'status': 'COMPLETED', 'items': len(seen), 'parts': [str(p) for p in a.parts], **ident,
-              'npu_miou': miou, 'gpu_fp32_miou_reference': GPU_FP32_MIOU, 'miou_drop_vs_gpu': GPU_FP32_MIOU - miou,
+              'variant': variant, 'plan_precision': precision,
+              'npu_miou': miou, 'gpu_fp32_miou_reference': GPU_FP32_MIOU[variant],
+              'miou_drop_vs_gpu': GPU_FP32_MIOU[variant] - miou,
               'per_class_iou': ious, 'valid_pixels': pixels, 'golden_checks': golden,
               'run_ms_host_observed': {'n': len(s), 'min': s[0], 'p50': s[len(s) // 2], 'p99': s[int(len(s) * 0.99)],
                                        'max': s[-1], 'note': 'diagnostic host time around run(); not DUT-service'},
               'not_yet': 'ORT FP32 per-image label agreement on the same canonical tensors (guide L1 item 2/4)',
-              'g15': 'criterion [DECISION PENDING]: proposed drop <= 0.01 for BF16'}
+              'g15': 'criterion [DECISION PENDING]: ' + G15.get(precision, 'see guide')}
     a.out.mkdir(parents=True, exist_ok=True)
     (a.out / 'l1_npu_val500.json').write_text(json.dumps(result, indent=1) + '\n')
     print(json.dumps({k: result[k] for k in ('items', 'npu_miou', 'gpu_fp32_miou_reference', 'miou_drop_vs_gpu',

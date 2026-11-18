@@ -55,17 +55,18 @@
   "latest_native_trial": "/home/bmt/caontd/eagle_n_integration_evidence/run_20261112T081434_426852Z",
   "native_r18_trial_report": "/home/bmt/caontd/eagle_n_integration_evidence/run_20261112T081434_426852Z/verification/R18_TRIAL_RESULT.json",
   "r101_integration": {
-    "status": "REMOVED_2026_11_18_NEVER_QUALIFIED (BF16 tuned R-101 comes with the R-50/R-101 hand-over)",
+    "status": "L0_L5_PASSED_PROVISIONAL_D5_D6",
+    "updated": "2026-11-18",
     "artifact_sha256": "86d0f08c1852723892777c0216936e5b790d3b9345f0e83473fb21309c129745",
     "logical_convs": 121,
-    "plan": "/home/bmt/caontd/eagle_n_integration_assets/r101/r101.plan.json",
-    "weights": "/home/bmt/caontd/eagle_n_integration_assets/r101/r101.weights.f32",
+    "plan": "/home/bmt/caontd/eagle_n_integration_assets/r101_bf16/r101.plan.json",
+    "plan_sha256": "5522ef44fd2d490c6f65877aa0459de4eb7b9141f580f8dc85ae8e6999f57b5a",
+    "weights": "/home/bmt/caontd/eagle_n_integration_assets/r101_bf16/r101.weights.f32",
+    "weights_sha256": "7f1f07206ecf8d88ef113ad97ba27c5cd822a1c656efa0d2bdecd0b4a3b298ea",
     "precision": "bf16-conv-fp32dst",
-    "offline_export": "EXPORTED_NOT_QUALIFIED",
-    "native_build_after_change": "NOT_DONE",
-    "native_npu_execution": "NOT_RUN",
-    "qualification_receipt": "ABSENT",
-    "baseline": "TEMPLATE_ONLY_YAML_IN"
+    "qualification_receipt_sha256": "8ac7a488b7a1f0ed4e9495c0019d7134eafc10e41952b7c8a56ffcab332d4195",
+    "golden_sha256": "e520fdc052f6394e667f8f964fb8b85f26e62724cea16923605704768bec00e7",
+    "note": "plain r101 layout (plan eca9968a, untuned, unqualified) removed 2026-11-18"
   },
-  "removed_2026_11_18": "FP32-conv (fp32_conv) precision and the plain r50/r101 configs (old executor 755355f4, never qualified)"
+  "removed_2026_11_18": "FP32-conv (fp32_conv) precision and the plain r50/r101 configs+assets (old executor 755355f4, never qualified); backup /home/bmt/caontd/eagle_n_integration_review/removed_fp32_legacy_20261118"
 }

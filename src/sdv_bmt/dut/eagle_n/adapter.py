@@ -18,6 +18,10 @@ from ..native import REPO_ROOT, NativeRealtimeAdapter, describe_native, native_b
 H04 = {'r18':'d7776aa683a18ca4e09305360f7d7f2857bac1a665dbbbc3aee2c60348450969',
        'r50':'6177c7ee37f5ce9779b39cea5defee2f1262fca37e3154ad28b74eadfafdf476',
        'r101':'86d0f08c1852723892777c0216936e5b790d3b9345f0e83473fb21309c129745'}
+# Plan precision (tools/eagle_n/export_plan.py PRECISIONS) -> workload `precision` declaration.
+# BF16 activations only; FP32-conv plans (fp32_conv) are refused since 2026-11-18 (never qualified).
+PLAN_PRECISIONS = {'r18': ('bf16',), 'r50': ('bf16', 'bfp8w'), 'r101': ('bf16',)}
+PRECISION_DECLARATION = {'bf16': 'bf16-conv-fp32dst', 'bfp8w': 'bfp8w-conv-bf16act-fp32dst'}
 def file_sha(path: str) -> str:
     h=hashlib.sha256()
     with Path(path).open('rb') as f:
@@ -105,14 +109,13 @@ class EagleNDUT(NativeRealtimeAdapter):
         p=parse_strict(EagleNProgram,workload.options.get('device_program',{}),'workload.options.device_program')
         if workload.artifact_sha256!=H04[p.variant]:raise ValueError('H04 digest differs from selected variant')
         if self._options.trial_unqualified and p.variant!='r18':raise ValueError('Unqualified direct trial is restricted to R18')
-        # FP32-conv R-50 plans are refused since 2026-11-18 (never qualified); BF16 activations only.
-        expected_precision={'r18':'bf16-conv-fp32dst','r101':'bf16-conv-fp32dst'}.get(p.variant)
-        if expected_precision is None:raise ValueError('No supported precision for '+p.variant+' (FP32-conv removed)')
-        if workload.precision!=expected_precision:raise ValueError('Executed precision declaration mismatch')
         for path,h in [(p.plan,p.plan_sha256),(p.weights,p.weights_sha256),(p.compile_record,p.compile_record_sha256)]:
             if file_sha(path)!=h:raise ValueError('Eagle-N program asset digest mismatch: '+path)
         plan=json.loads(Path(p.plan).read_text());record=json.loads(Path(p.compile_record).read_text())
-        if plan.get('schema')!='sdv-bmt-eagle-n-ttnn-plan/1' or plan.get('onnx_sha256')!=workload.artifact_sha256:raise ValueError('native plan identity mismatch')
+        if plan.get('schema')!='sdv-bmt-eagle-n-ttnn-plan/1' or plan.get('onnx_sha256')!=workload.artifact_sha256 or plan.get('variant')!=p.variant:raise ValueError('native plan identity mismatch')
+        # The executor runs the precision written in the plan; the workload must declare exactly that.
+        if plan.get('precision') not in PLAN_PRECISIONS[p.variant]:raise ValueError('Unsupported plan precision for '+p.variant)
+        if workload.precision!=PRECISION_DECLARATION[plan['precision']]:raise ValueError('Executed precision declaration mismatch')
         if record.get('plan_sha256')!=p.plan_sha256 or record.get('weights_sha256')!=p.weights_sha256:raise ValueError('compile record mismatch')
         return {'program':{'kind':'bos_ttnn_native_plan','plan_path':p.plan,'plan_sha256':p.plan_sha256,'weights_path':p.weights,'weights_sha256':p.weights_sha256,
             'artifact_sha256':workload.artifact_sha256,'qualification_path':p.qualification,'input_bytes':p.input_bytes,'task_output_bytes':p.task_output_bytes}}
