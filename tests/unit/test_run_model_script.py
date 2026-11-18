@@ -284,7 +284,7 @@ def test_eagle_n_flow_checks_the_host_and_copies_the_bundles(tmp_path):
     name = "deeplabv3plus-r18-eagle-n"
     missing = _run([name], env)
     assert missing.returncode == 1, missing.stdout
-    for text in ("export EAGLE_N_SDK_ROOT", "build-runner", "libeagle_n_ttnn.so missing", "does not exist", "sudo -v"):
+    for text in ("export EAGLE_N_SDK_ROOT", "build-runner", "libeagle_n_ttnn.so missing", "does not exist"):
         assert text in missing.stdout
     assert not (evid / "calls.txt").exists()  # nothing started
     native.mkdir()
@@ -294,6 +294,8 @@ def test_eagle_n_flow_checks_the_host_and_copies_the_bundles(tmp_path):
     (assets / "libeagle_n_ttnn.so").write_bytes(b"stub")
     sdk.mkdir()
     device.write_text("")
+    no_sudo = _run([name], env)  # no sudo timestamp and no terminal to ask on: nothing is started
+    assert no_sudo.returncode == 1 and "run 'sudo -v' first" in no_sudo.stdout and not (evid / "calls.txt").exists()
     ok = _run([name], {**env, "SUDO": str(tmp_path / "sudo-ok")})
     assert ok.returncode == 0, ok.stdout + ok.stderr
     calls = (evid / "calls.txt").read_text().splitlines()

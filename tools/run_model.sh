@@ -25,8 +25,9 @@
 #   Eagle-N models (deeplabv3plus-r18-eagle-n) run on the host of the BOS Eagle-N board, through the BOS container
 #   launcher tools/eagle_n/in_container.py (validate and every run inside the container; evaluation and table on the
 #   host).  They need EAGLE_N_SDK_ROOT, the native runner (in_container.py build-runner), the Eagle-N assets below
-#   /opt/sdv_assets/eagle_n with the qualification receipt (tools/eagle_n/README.md) and a valid sudo timestamp
-#   ('sudo -v' first: the launcher uses sudo -n for Docker, the private hugepage mount and the NPU user check).
+#   /opt/sdv_assets/eagle_n with the qualification receipt (tools/eagle_n/README.md) and a sudo timestamp (the
+#   launcher uses sudo -n for Docker, the private hugepage mount and the NPU user check; on a terminal the script
+#   asks for the sudo password once when there is none).
 #   The launcher runs in its own session, so Ctrl-C does not reach a process that holds the NPU (it is never killed).
 #
 # Output:
@@ -278,9 +279,16 @@ eagle_n_ready() {  # name: what an Eagle-N run needs, checked before anything ru
   [ -f "$EN_ASSETS/$(basename "$exe")" ] \
     || { say "$name: $EN_ASSETS/$(basename "$exe") missing (Eagle-N assets, tools/eagle_n/README.md host setup)"; bad=1; }
   [ -e "$EN_DEV" ] || { say "$name: $EN_DEV does not exist (not the Eagle-N host, or the driver is not loaded)"; bad=1; }
-  "$SUDO" -n true 2>/dev/null \
-    || { say "$name: the launcher uses sudo -n (Docker, hugepage mount, NPU user check); run 'sudo -v' first"; bad=1; }
-  return $bad
+  [ $bad = 0 ] || return 1
+  if ! "$SUDO" -n true 2>/dev/null; then  # a sudo timestamp counts for one terminal only (script -c opens a new one)
+    if [ -t 0 ]; then
+      say "$name: the launcher uses sudo -n (Docker, hugepage mount, NPU user check): enter the sudo password once"
+      "$SUDO" -v || { say "$name: no sudo timestamp; nothing started"; return 1; }
+    else
+      say "$name: the launcher uses sudo -n (Docker, hugepage mount, NPU user check); run 'sudo -v' first"; return 1
+    fi
+  fi
+  return 0
 }
 
 eagle_n_runs() {  # name: validate in the container, REPS runs in the container (bundles copied to $R/vision)
