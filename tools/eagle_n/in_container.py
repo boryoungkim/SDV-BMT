@@ -40,6 +40,9 @@ def sha(p):
 def npu_idle() -> None:
     if not Path(DEVICE).exists():
         raise ValueError("device node absent")
+    # fuser exits 1 when no process uses the device, and so does a refused sudo: require sudo -n first.
+    if subprocess.run(["sudo", "-n", "true"], capture_output=True).returncode != 0:
+        raise ValueError("sudo -n unavailable (run 'sudo -v' first): the NPU user check cannot run")
     r = subprocess.run(["sudo", "-n", "fuser", DEVICE], capture_output=True, text=True)
     if r.returncode != 1:
         raise ValueError("NPU is busy or competing-user query failed: " + r.stdout + r.stderr)

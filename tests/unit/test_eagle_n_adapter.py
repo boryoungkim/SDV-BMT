@@ -11,6 +11,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -541,3 +542,21 @@ def test_r50_bf16_decomposition_is_proven_and_equivalent():
         return {**o, "launch": {k: v for k, v in o["launch"].items() if k != "reason"}} if "launch" in o else o
 
     assert [strip(o) for o in recon["ops"][:101]] == [strip(o) for o in plan["ops"][:101]]  # ops #0-#100: device-proven
+
+
+def test_npu_user_check_needs_sudo(monkeypatch, tmp_path):
+    """fuser exits 1 for 'no user' and a refused sudo exits 1 too: without sudo -n the check must stop."""
+    m = _module("eagle_container_sudo", "tools/eagle_n/in_container.py")
+    device = tmp_path / "bos0"
+    device.write_text("")
+    monkeypatch.setattr(m, "DEVICE", str(device))
+    calls = []
+
+    def run(cmd, **kw):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 1, "", "sudo: a password is required")
+
+    monkeypatch.setattr(m.subprocess, "run", run)
+    with pytest.raises(ValueError, match="sudo -n unavailable"):
+        m.npu_idle()
+    assert calls == [["sudo", "-n", "true"]]  # fuser is not asked
