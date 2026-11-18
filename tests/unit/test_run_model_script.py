@@ -2,7 +2,8 @@
 commands in place of sdv-bmt and the table command (runs, evaluation, table, refusal of existing runs, the timed-run
 marker; Llama: one device per model name, llama-<m> on the GPU and llama-<m>-rngd on the RNGD card, with the refusal
 of existing runs per device; MLA400: the native runner, device node and compiled model checks, and the refusal while
-another process holds the NPU device).  No device is used."""
+another process holds the NPU device; Eagle-N: the host checks, the container launcher for validate and runs, the
+copied bundles).  No device is used."""
 
 from __future__ import annotations
 
@@ -20,6 +21,7 @@ MODELS = ["yolox-tiny", "yolox-s", "yolox-m", "yolox-l", "yolox-x", "deeplabv3pl
 CP_MINI = "centerpoint-pillar02-mini"
 RNGD = ["llama-3.2-1b-instruct-rngd", "llama-3.2-3b-instruct-rngd", "llama-3.1-8b-instruct-rngd"]
 MLA400 = ["yolox-tiny-mla400", "yolox-s-mla400", "yolox-m-mla400", "yolox-l-mla400", "yolox-x-mla400"]
+EAGLE_N = ["deeplabv3plus-r18-eagle-n"]
 LLM_ENV = ("SDV_BMT_MODELS", "SDV_BMT_DATASETS", "SDV_BMT_CACHE", "VLLM_PY", "FURIOSA_PY", "HF_HOME")
 
 STUB_BMT = """#!/usr/bin/env bash
@@ -47,11 +49,26 @@ while [ "$1" != "--out" ]; do shift; done
 printf 'row,metric_name\\nheadline,DUT service time (median)\\n' > "$2"
 echo "   DUT service time (median) - 1.000 ms" >&2
 """
+STUB_LAUNCH = """#!/usr/bin/env bash
+# tools/eagle_n/in_container.py MODE TARGET --evidence DIR ...: an evidence directory as the launcher writes it
+shift  # -B
+mode=$2 target=$3 ev=$5/${2}_$(date +%s%N); mkdir -p "$ev"
+echo "$mode $target $*" >> "$5/calls.txt"
+case $mode in
+  validate) echo '{"status": "valid"}' > "$ev/run.log" ;;
+  run) exp=$(basename "$target" .yaml); d=$ev/bundles/$exp/run-$(date +%s%N); mkdir -p "$d"; touch "$d/manifest.json"
+       printf '{\\n  "execution_status": "completed",\\n  "measurement_status": "valid"\\n}\\n' ;;
+esac
+echo '{"exit_code": 0}' > "$ev/status.json"
+echo "Evidence: $ev"
+"""
 
 
 def _run(args, env=None):
     base = {k: v for k, v in os.environ.items()
-            if k not in LLM_ENV + ("R", "REPS", "BMT", "PY", "MARK", "MLA400_DEVICE", "SDV_BMT_NATIVE_DIR")}
+            if k not in LLM_ENV + ("R", "REPS", "BMT", "PY", "MARK", "MLA400_DEVICE", "SDV_BMT_NATIVE_DIR", "EN_PY",
+                                   "EN_LAUNCH", "SUDO", "EAGLE_N_ASSETS", "EAGLE_N_EVIDENCE", "EAGLE_N_DEVICE",
+                                   "EAGLE_N_SDK_ROOT")}
     return subprocess.run(["bash", str(SCRIPT), *args], capture_output=True, text=True, env={**base, **(env or {})},
                           timeout=120)
 
@@ -68,9 +85,9 @@ def _datasets(stdout):
     return values
 
 
-def test_list_names_the_12_gpu_models_the_3_rngd_models_and_the_5_mla400_models():
+def test_list_names_the_12_gpu_models_the_3_rngd_models_the_5_mla400_models_and_the_eagle_n_model():
     proc = _run(["list"])
-    assert proc.returncode == 0 and proc.stdout.split() == MODELS + [CP_MINI] + RNGD + MLA400
+    assert proc.returncode == 0 and proc.stdout.split() == MODELS + [CP_MINI] + RNGD + MLA400 + EAGLE_N
     assert _run(["no-such-model"]).returncode == 2
 
 
@@ -236,3 +253,55 @@ def test_centerpoint_mini_runs_the_mini_set_only(tmp_path):
     assert "evaluated 1 (sdv-bmt-model-metric-set-v1.2)" in ran.stdout
     assert (out / "tables" / f"{CP_MINI}.metrics.csv").is_file() and not (out / "vision" / "centerpoint-pillar02-val-series").exists()
 
+
+
+def test_eagle_n_dry_run_names_the_container_launcher_and_writes_nothing(tmp_path):
+    proc = _run(["deeplabv3plus-r18-eagle-n", "--dry-run"], {"R": str(tmp_path / "bench")})
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert not (tmp_path / "bench").exists()
+    cfg = "configs/experiments/deeplabv3plus-r18-eagle-n-baseline.yaml"
+    assert (REPO_ROOT / cfg).is_file() and f"in_container.py validate {cfg}" in proc.stdout
+    assert f"setsid -w .venv/bin/python -B tools/eagle_n/in_container.py run {cfg}" in proc.stdout
+    assert "--kernel-cache /opt/sdv_assets/eagle_n/eagle_n_integration_assets/kernel_cache_r18_tuned" in proc.stdout
+    assert "NPU /dev/bos/0, executor /opt/sdv_assets/eagle_n/eagle_n_integration_assets/libeagle_n_ttnn.so" in proc.stdout
+    assert "--catalog sdv-bmt-model-metric-set-v1.1" in proc.stdout and proc.stdout.count("sdv_bmt.cli.table") == 1
+    assert _datasets(proc.stdout) == ["cityscapes-val500 (500 items)"]
+    assert "-eagle-n" not in _run(["all", "--dry-run"], {"R": str(tmp_path / "b2")}).stdout  # all = the GPU models
+
+
+def test_eagle_n_flow_checks_the_host_and_copies_the_bundles(tmp_path):
+    stubs = {"sdv-bmt": STUB_BMT, "python": STUB_PY, "launch": STUB_LAUNCH, "sudo-no": "#!/bin/sh\nexit 1\n",
+             "sudo-ok": "#!/bin/sh\nexit 0\n"}
+    for name, text in stubs.items():
+        (tmp_path / name).write_text(text)
+        (tmp_path / name).chmod(0o755)
+    native, assets, evid, sdk, device = (tmp_path / n for n in ("native", "assets", "evidence", "sdk", "bos0"))
+    evid.mkdir()
+    env = {"R": str(tmp_path / "bench"), "REPS": "2", "BMT": str(tmp_path / "sdv-bmt"), "PY": str(tmp_path / "python"),
+           "MARK": str(tmp_path / "MARK"), "SDV_BMT_NATIVE_DIR": str(native), "EN_PY": str(tmp_path / "launch"),
+           "EN_LAUNCH": "in_container.py", "SUDO": str(tmp_path / "sudo-no"), "EAGLE_N_ASSETS": str(assets),
+           "EAGLE_N_EVIDENCE": str(evid), "EAGLE_N_DEVICE": str(device), "EAGLE_N_SDK_ROOT": str(sdk)}
+    name = "deeplabv3plus-r18-eagle-n"
+    missing = _run([name], env)
+    assert missing.returncode == 1, missing.stdout
+    for text in ("export EAGLE_N_SDK_ROOT", "build-runner", "libeagle_n_ttnn.so missing", "does not exist", "sudo -v"):
+        assert text in missing.stdout
+    assert not (evid / "calls.txt").exists()  # nothing started
+    native.mkdir()
+    (native / "sdv-bmt-native-eagle-n").write_text("#!/bin/sh\n")
+    (native / "sdv-bmt-native-eagle-n").chmod(0o755)
+    assets.mkdir()
+    (assets / "libeagle_n_ttnn.so").write_bytes(b"stub")
+    sdk.mkdir()
+    device.write_text("")
+    ok = _run([name], {**env, "SUDO": str(tmp_path / "sudo-ok")})
+    assert ok.returncode == 0, ok.stdout + ok.stderr
+    calls = (evid / "calls.txt").read_text().splitlines()
+    assert [c.split()[0] for c in calls] == ["validate", "run", "run"]
+    assert all("--kernel-cache " + str(assets / "kernel_cache_r18_tuned") in c for c in calls[1:])
+    runs = sorted((tmp_path / "bench" / "vision" / f"{name}-baseline").glob("run-*"))
+    assert len(runs) == 2 and all((r / "manifest.json").is_file() and (r / "evaluations").is_dir() for r in runs)
+    assert "run 2/2  completed/valid  (evidence " in ok.stdout and (tmp_path / "bench" / "tables" / f"{name}.metrics.csv").is_file()
+    assert not (tmp_path / "MARK").exists()
+    again = _run([name], {**env, "SUDO": str(tmp_path / "sudo-ok")})
+    assert again.returncode == 3 and "already has runs" in again.stdout
