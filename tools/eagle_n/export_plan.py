@@ -24,7 +24,8 @@ def canonical(v): return json.dumps(v, sort_keys=True, separators=(',', ':'), en
 def convert(path: Path, variant: str, precision: str):
     content = path.read_bytes()
     if sha(content) != H04[variant]: raise ValueError('H04 SHA-256 mismatch; no conversion')
-    if precision != {'r18':'bf16', 'r50':'fp32_conv', 'r101':'bf16'}[variant]: raise ValueError('Unsupported variant/precision combination')
+    # fp32_conv (R-50 FP32 convs on the NPU) removed 2026-11-18: never qualified; BF16 only.
+    if precision != {'r18':'bf16', 'r101':'bf16'}.get(variant): raise ValueError('Unsupported variant/precision combination')
     model = R.load(str(path))
     if model.opsets.get('', 0) != 17: raise ValueError('opset must be 17')
     inputs = [x for x in model.inputs if x.name not in model.initializers]
@@ -103,10 +104,11 @@ def convert(path: Path, variant: str, precision: str):
     return plan,bytes(weights)
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--onnx',type=Path,required=True);p.add_argument('--variant',choices=H04,required=True);p.add_argument('--out',type=Path,required=True)
-    p.add_argument('--precision',choices=('bf16','fp32_conv'))
+    p.add_argument('--precision',choices=('bf16',))
     a=p.parse_args();a.out.mkdir(parents=True,exist_ok=True)
     if a.out.resolve().is_relative_to(ROOT):raise ValueError('Model assets must be outside the repository')
-    expected={'r18':'bf16','r50':'fp32_conv','r101':'bf16'}[a.variant]
+    expected={'r18':'bf16','r101':'bf16'}.get(a.variant)
+    if expected is None:raise ValueError(f'{a.variant}: no supported precision in this version (R-50 FP32-conv removed 2026-11-18)')
     precision=a.precision or expected
     if precision!=expected:raise ValueError(f'{a.variant} requires exporter precision {expected}')
     plan,weights=convert(a.onnx,a.variant,precision)

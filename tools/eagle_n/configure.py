@@ -5,8 +5,14 @@ import argparse,copy,hashlib,json,os
 from pathlib import Path
 import yaml
 ROOT=Path(__file__).resolve().parents[2]
-DEFAULT_BUDGETS={'staging_budget_bytes':4294967296,'prepare_host_budget_bytes':4294967296}
-BUDGETS={'r18':{'staging_budget_bytes':6979321856,'prepare_host_budget_bytes':7516192768}}
+# Host memory budgets (INTERNAL guards, not guide values), ONE value for every supported plan: all supported plans
+# have BF16 activations (12 MiB staged per item). Sized from the R18 RSS probe (l1_20261115T052755_396307Z: base ~305 MiB,
+# 11.63 MiB per staged item; 500 items ~6.0 GiB) -> staging 6.5 GiB, process RSS 7 GiB. There is deliberately NO smaller
+# default: a new precision with larger staged items must be measured (RSS probe) and get its own entry before use.
+BUDGETS={'staging_budget_bytes':6979321856,'prepare_host_budget_bytes':7516192768}
+# The plain R-50 (FP32-conv) and R-101 (untuned) configs were removed 2026-11-18 (never qualified). R-50/R-101 BF16
+# configs come with the R-50/R-101 hand-over; until then this tool generates R-18 only.
+SUPPORTED=('r18',)
 
 
 def digest(p):
@@ -14,20 +20,21 @@ def digest(p):
  with p.open('rb') as f:
   for b in iter(lambda:f.read(1048576),b''):h.update(b)
  return h.hexdigest()
-def generate(assets:Path,executor:Path,variants=('r18','r50')):
+def generate(assets:Path,executor:Path,variants=SUPPORTED):
  rows=[];cpus=sorted(os.sched_getaffinity(0));executor_hash=digest(executor)
  for variant in variants:
+  if variant not in SUPPORTED:raise ValueError(f'{variant}: not supported by this version (R-18 only; see SUPPORTED)')
   d=assets/variant;plan=d/(variant+'.plan.json');weights=d/(variant+'.weights.f32');record=d/'compile_record.json'
   pdata=json.loads(plan.read_text())
   if pdata.get('variant')!=variant:raise ValueError(f'{plan}: variant identity mismatch')
   # Host memory budgets (INTERNAL guards, not guide values). R18 sized from the measured RSS probe
   # (eagle_n_integration_evidence/l1_20261115T052755_396307Z: base ~305 MiB, 11.63 MiB per staged BF16 item):
-  # 500 items -> ~6.0 GiB; staging 6.5 GiB, process RSS 7 GiB. Other variants keep 4 GiB until measured.
-  precision={'r18':'bf16-conv-fp32dst','r50':'fp32-conv-bf16-pool-resize','r101':'bf16-conv-fp32dst'}[variant]
+  # 500 items -> ~6.0 GiB; staging 6.5 GiB, process RSS 7 GiB (BUDGETS above).
+  precision={'r18':'bf16-conv-fp32dst'}[variant]
   wid=f'deeplabv3plus-{variant}-cityscapes-v1-eagle-n';did=f'eagle-n-{variant}'
   dut={'schema_version':1,'dut_config_id':did,'adapter':'bos_eagle_n','device':'0','max_inflight':1,
        'runtime_options':{'device_id':0,'executor':str(executor.resolve()),'executor_sha256':executor_hash,
-        'lock_path':str((assets/'device0.lock').resolve()),'trace_region_bytes':67108864,**BUDGETS.get(variant,DEFAULT_BUDGETS)}}
+        'lock_path':str((assets/'device0.lock').resolve()),'trace_region_bytes':67108864,**BUDGETS}}
   work=yaml.safe_load((ROOT/f'configs/workloads/deeplabv3plus-{variant}-cityscapes-v1.yaml').read_text())
   work['workload_id']=wid;work['precision']=precision
   work['options']['device_program']={'language':'bos_ttnn_native_plan','variant':variant,'plan':str(plan.resolve()),'plan_sha256':digest(plan),
@@ -56,6 +63,6 @@ def generate(assets:Path,executor:Path,variants=('r18','r50')):
    rows.append(str(path.relative_to(ROOT)))
  return rows
 def main():
- p=argparse.ArgumentParser();p.add_argument('--assets',type=Path,default=Path('/home/bmt/caontd/eagle_n_integration_assets'));p.add_argument('--executor',type=Path,default=Path('/home/bmt/caontd/eagle_n_integration_assets/libeagle_n_ttnn.so'));p.add_argument('--variant',action='append',choices=('r18','r50','r101'),help='generate only this variant; repeat to select several (default: existing R18/R50)');a=p.parse_args()
- print(json.dumps({'generated':generate(a.assets,a.executor,tuple(a.variant) if a.variant else ('r18','r50'))},indent=2))
+ p=argparse.ArgumentParser();p.add_argument('--assets',type=Path,default=Path('/home/bmt/caontd/eagle_n_integration_assets'));p.add_argument('--executor',type=Path,default=Path('/home/bmt/caontd/eagle_n_integration_assets/libeagle_n_ttnn.so'));p.add_argument('--variant',action='append',choices=SUPPORTED,help='generate only this variant (default: r18)');a=p.parse_args()
+ print(json.dumps({'generated':generate(a.assets,a.executor,tuple(a.variant) if a.variant else SUPPORTED)},indent=2))
 if __name__=='__main__':main()

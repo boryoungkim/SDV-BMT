@@ -55,7 +55,7 @@
   "latest_native_trial": "/home/bmt/caontd/eagle_n_integration_evidence/run_20261112T081434_426852Z",
   "native_r18_trial_report": "/home/bmt/caontd/eagle_n_integration_evidence/run_20261112T081434_426852Z/verification/R18_TRIAL_RESULT.json",
   "r101_integration": {
-    "status": "OFFLINE_PLAN_AND_CONFIG_WIRED_NATIVE_NPU_NOT_QUALIFIED",
+    "status": "REMOVED_2026_11_18_NEVER_QUALIFIED (BF16 tuned R-101 comes with the R-50/R-101 hand-over)",
     "artifact_sha256": "86d0f08c1852723892777c0216936e5b790d3b9345f0e83473fb21309c129745",
     "logical_convs": 121,
     "plan": "/home/bmt/caontd/eagle_n_integration_assets/r101/r101.plan.json",
@@ -66,5 +66,6 @@
     "native_npu_execution": "NOT_RUN",
     "qualification_receipt": "ABSENT",
     "baseline": "TEMPLATE_ONLY_YAML_IN"
-  }
+  },
+  "removed_2026_11_18": "FP32-conv (fp32_conv) precision and the plain r50/r101 configs (old executor 755355f4, never qualified)"
 }

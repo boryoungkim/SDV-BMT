@@ -105,8 +105,9 @@ class EagleNDUT(NativeRealtimeAdapter):
         p=parse_strict(EagleNProgram,workload.options.get('device_program',{}),'workload.options.device_program')
         if workload.artifact_sha256!=H04[p.variant]:raise ValueError('H04 digest differs from selected variant')
         if self._options.trial_unqualified and p.variant!='r18':raise ValueError('Unqualified direct trial is restricted to R18')
-        expected_precision={'r18':'bf16-conv-fp32dst','r50':'fp32-conv-bf16-pool-resize',
-                            'r101':'bf16-conv-fp32dst'}[p.variant]
+        # FP32-conv R-50 plans are refused since 2026-11-18 (never qualified); BF16 activations only.
+        expected_precision={'r18':'bf16-conv-fp32dst','r101':'bf16-conv-fp32dst'}.get(p.variant)
+        if expected_precision is None:raise ValueError('No supported precision for '+p.variant+' (FP32-conv removed)')
         if workload.precision!=expected_precision:raise ValueError('Executed precision declaration mismatch')
         for path,h in [(p.plan,p.plan_sha256),(p.weights,p.weights_sha256),(p.compile_record,p.compile_record_sha256)]:
             if file_sha(path)!=h:raise ValueError('Eagle-N program asset digest mismatch: '+path)

@@ -111,6 +111,8 @@ their own commit, so they can be dropped once the lines are added upstream.
 - R-50 passed standalone only in **FP32**. BF16 failed the full-model gate (layer3 5.9 % > 5 %). Decide its precision
   before L0.
 - `configs/duts/eagle-n-r50.yaml` still pins an old executor sha. Re-run `configure.py --variant r50` after the build.
+  *(2026-11-18: superseded. The plain r50/r101 configs and the FP32-conv precision were removed; R-50/R-101 BF16
+  configs come with their hand-over.)*
 - R-50 has 3.3× the weights of R-18 (165 MB) and a heavier graph. Before L3, re-measure:
   - staging/RSS per item (issue 7)
   - the timeout margin (issue 13)

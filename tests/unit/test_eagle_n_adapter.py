@@ -19,7 +19,10 @@ def test_options_reject_invalid(config,key,value):
 def test_unknown_option_is_error(config):
  config['runtime_options']['invented_override']=True
  with pytest.raises(ValueError):EagleNDUT(parse_strict(DUTConfig,config))
-@pytest.mark.parametrize('model',['r18','r50','r101'])
+# Only R-18 Eagle-N configs exist in this version: the plain r50 (FP32-conv) / r101 (untuned) configs were removed
+# 2026-11-18 (never qualified); R-50/R-101 BF16 configs come with their hand-over.
+EAGLE_MODELS=['r18']
+@pytest.mark.parametrize('model',EAGLE_MODELS)
 def test_plugin_preserves_canonical_workload(model):
  base=load_yaml_strict(ROOT/f'configs/workloads/deeplabv3plus-{model}-cityscapes-v1.yaml')
  new=load_yaml_strict(ROOT/f'configs/workloads/deeplabv3plus-{model}-cityscapes-v1-eagle-n.yaml')
@@ -31,7 +34,7 @@ def test_plugin_preserves_canonical_workload(model):
  w=DeepLabCityscapesWorkload(parse_strict(WorkloadSpec,new))
  assert w.input_contract().contract_id=='cityscapes-rgb-norm-chw2048x1024-f32'
  p=parse_strict(EagleNProgram,new['options']['device_program']);assert p.task_output_bytes==2097152
-@pytest.mark.parametrize('model',['r18','r50','r101'])
+@pytest.mark.parametrize('model',EAGLE_MODELS)
 def test_native_plan_identity_and_bindings(model):
  work=load_yaml_strict(ROOT/f'configs/workloads/deeplabv3plus-{model}-cityscapes-v1-eagle-n.yaml')
  p=work['options']['device_program'];plan=json.loads(Path(p['plan']).read_text());blob=Path(p['weights']).read_bytes()
@@ -51,7 +54,13 @@ def test_measurement_declares_sync_cast_and_no_fabricated_device_time(config):
 # Variants whose native qualification receipt was generated from real L1 evidence (evidence log §13, 2026-11-15).
 QUALIFIED={'r18'}
 def _sha(path):return hashlib.sha256(Path(path).read_bytes()).hexdigest()
-@pytest.mark.parametrize('model',['r18','r50','r101'])
+def test_no_fp32_or_legacy_eagle_n_configs():
+ for v in ('r50','r101'):
+  assert not (ROOT/f'configs/duts/eagle-n-{v}.yaml').exists()
+  assert not (ROOT/f'configs/workloads/deeplabv3plus-{v}-cityscapes-v1-eagle-n.yaml').exists()
+  assert not (ROOT/f'configs/experiments/deeplabv3plus-{v}-eagle-n-capture.yaml').exists()
+ for f in (ROOT/'configs').rglob('*eagle-n*'):assert 'fp32-conv' not in f.read_text(),f
+@pytest.mark.parametrize('model',EAGLE_MODELS)
 def test_no_gpu_golden_or_fake_qualification_in_baseline_templates(model):
  p=ROOT/f'configs/experiments/deeplabv3plus-{model}-eagle-n-baseline.yaml.in'
  assert p.exists();s=p.read_text();assert 'gpu-capture' not in s and 'REQUIRES_REAL_NPU_GOLDEN' in s
@@ -76,7 +85,7 @@ def test_h04_exporter_fails_before_parsing_unknown_artifact(tmp_path):
  p=tmp_path/'wrong.onnx';p.write_bytes(b'not-the-assigned-model')
  with pytest.raises(ValueError,match='H04'):m.convert(p,'r18','bf16')
 def test_capture_is_asap_with_original_timeout_and_no_output_reference():
- for m in ('r18','r50','r101'):
+ for m in EAGLE_MODELS:
   p=load_yaml_strict(ROOT/f'configs/experiments/deeplabv3plus-{m}-eagle-n-capture.yaml')
   ref=load_yaml_strict(ROOT/f'configs/experiments/deeplabv3plus-{m}-capture.yaml')
   assert p['replay']==ref['replay'] and p['run']==ref['run']
@@ -87,10 +96,11 @@ def _launcher(monkeypatch):
  def forbidden(*a,**kw):raise AssertionError('No device/subprocess before qualification')
  monkeypatch.setattr(m.subprocess,'run',forbidden)
  return m
-@pytest.mark.parametrize('model',sorted({'r18','r50','r101'}-QUALIFIED))
-def test_actual_launcher_refuses_unqualified_graph_before_any_subprocess(monkeypatch,model):
- m=_launcher(monkeypatch)
- with pytest.raises(ValueError,match='qualification NOT RUN'):m.precheck(ROOT/f'configs/experiments/deeplabv3plus-{model}-eagle-n-capture.yaml')
+def test_actual_launcher_refuses_unqualified_graph_before_any_subprocess(monkeypatch):
+ # R-18 capture plan with its receipt made invisible: refused before any subprocess
+ m=_launcher(monkeypatch);real=m.Path.is_file
+ monkeypatch.setattr(m.Path,'is_file',lambda self:False if self.name=='native_qualification.json' else real(self))
+ with pytest.raises(ValueError,match='qualification NOT RUN'):m.precheck(ROOT/'configs/experiments/deeplabv3plus-r18-eagle-n-capture.yaml')
 @pytest.mark.parametrize('model',sorted(QUALIFIED))
 def test_actual_launcher_refuses_stale_qualification_before_any_subprocess(monkeypatch,model):
  if not Path(f'/home/bmt/caontd/eagle_n_integration_assets/{model}/native_qualification.json').exists():pytest.skip('NOT RUN: Eagle-N assets not present on this host')
@@ -112,9 +122,9 @@ def test_unqualified_trial_is_explicit_and_declares_jit(config):
  dut=EagleNDUT(parse_strict(DUTConfig,config))
  text=dut.measurement_declaration()['instrumentation']['submit_semantics']
  assert 'DIAGNOSTIC UNQUALIFIED' in text and 'JIT/allocation' in text
- for variant in ('r50','r101'):
-  work=load_yaml_strict(ROOT/f'configs/workloads/deeplabv3plus-{variant}-cityscapes-v1-eagle-n.yaml')
-  with pytest.raises(ValueError,match='restricted to R18'):dut.backend_spec(parse_strict(WorkloadSpec,work))
+ work=load_yaml_strict(ROOT/'configs/workloads/deeplabv3plus-r18-cityscapes-v1-eagle-n.yaml')
+ work['options']['device_program']['variant']='r101';work['artifact_sha256']='86d0f08c1852723892777c0216936e5b790d3b9345f0e83473fb21309c129745'
+ with pytest.raises(ValueError,match='restricted to R18'):dut.backend_spec(parse_strict(WorkloadSpec,work))
 
 @pytest.mark.parametrize('value',[1,'yes',None])
 def test_unqualified_trial_requires_boolean(config,value):

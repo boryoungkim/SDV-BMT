@@ -120,8 +120,7 @@ Các lệnh này không expose /dev/bos/0. configure phải chạy lại sau khi
 Assets hiện tại ngoài repo:
   /home/bmt/caontd/eagle_n_integration_assets/libeagle_n_ttnn.so
   /home/bmt/caontd/eagle_n_integration_assets/r18/{r18.plan.json,r18.weights.f32,compile_record.json}
-  /home/bmt/caontd/eagle_n_integration_assets/r50/{r50.plan.json,r50.weights.f32,compile_record.json}
-  /home/bmt/caontd/eagle_n_integration_assets/r101/{r101.plan.json,r101.weights.f32,compile_record.json}
+  (2026-11-18: assets r50/ (FP32-conv) và r101/ (untuned) cũ đã gỡ, chưa từng qualify; R-50/R-101 BF16 đi kèm bàn giao sau)
 Không đặt ONNX, weights, images, SDK hoặc bundles vào source commit.
 
 6. BƯỚC PORTING TIẾP — TRƯỚC KHI NÓI “CHẠY THÀNH CÔNG TRONG SDV-BMT”

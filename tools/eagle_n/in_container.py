@@ -33,7 +33,7 @@ def precheck(plan):
   if not receipt.get('passed') or any(receipt.get(k)!=v for k,v in [('executor_sha256',sha(opt['executor'])),('plan_sha256',sha(p['plan'])),('weights_sha256',sha(p['weights']))]):raise ValueError('native qualification stale or failed')
  count=rp.input_spec.selection.count
  if count is None:raise ValueError('bounded staging needs explicit input selection count')
- size=(12582912 if p['variant']=='r18' else 25165824)*count
+ size=12582912*count  # staged NHWC BF16 input, 12 MiB per item (FP32-conv plans removed 2026-11-18)
  need=count*int(p['input_bytes'])+2*2**30;free=shutil.disk_usage(EVID_FS).free
  if free<need:raise ValueError(f'SDV-BMT staging file needs {need} bytes free on disk (inputs + 2 GiB), only {free}')
  if size>opt['staging_budget_bytes']:raise ValueError(f'staged host payload {size} exceeds budget {opt["staging_budget_bytes"]}; resolve residency/budget before NPU access')
