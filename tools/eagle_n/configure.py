@@ -1,76 +1,212 @@
 #!/usr/bin/env python3
-"""Generate Eagle-N-only configs; leave canonical workload/input/measurement semantics unchanged."""
+"""Generate the Eagle-N configs from the assets and from the GPU configs of the same models.
+
+Per model (``r18``; ``r50`` and ``r101`` with BF16 plans, ids tagged ``-bf16``) it writes:
+
+- ``configs/duts/eagle-n-<model><tag>.yaml``: the executor with its two pins, ``executor_sha256`` and
+  ``executor_source_sha256`` (both from the build record ``<executor>.build.json``), the device lock and the host
+  memory budgets;
+- ``configs/workloads/deeplabv3plus-<model>-cityscapes-v1-eagle-n<tag>.yaml``: the GPU workload with the BF16
+  precision declaration and the Eagle-N device program (plan, weights, compile record and qualification receipt with
+  their SHA-256; ``qualification_sha256`` is null until the receipt exists);
+- ``configs/experiments/deeplabv3plus-<model>-eagle-n<tag>-{capture,baseline}.yaml``: the GPU plans with this
+  workload and DUT, the CPU affinity of this process and one request timeout and drain for every Eagle-N plan. The
+  baseline uses the model's NPU capture golden in ``configs/references``.
+
+Every path in the configs starts with the fixed root ``/opt/sdv_assets/eagle_n`` (tools/eagle_n/README.md, host
+setup), so the configs are the same on every host. ``--root`` is where that root is on this host.
+"""
+
 from __future__ import annotations
-import argparse,copy,hashlib,json,os,sys
-from pathlib import Path
+
+import argparse
+import hashlib
+import json
+import os
+import sys
+import textwrap
+from pathlib import Path, PurePosixPath
+from typing import Any, Optional
+
 import yaml
-ROOT=Path(__file__).resolve().parents[2]
-sys.path.insert(0,str(ROOT/'src'))
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "src"))
 from sdv_bmt.dut.eagle_n.adapter import PRECISION_DECLARATION  # noqa: E402
-# Host memory budgets (INTERNAL guards, not guide values), ONE value for every supported plan.
-# Every supported plan has BF16 activations (precision bf16 or bfp8w; FP32-conv plans were removed 2026-11-18), so each
-# staged item is the same 12 MiB BF16 input. Sized from the R18 RSS probe (l1_20261115T052755_396307Z: base ~305 MiB,
-# 11.63 MiB per staged item; 500 items ~6.0 GiB) -> staging 6.5 GiB, process RSS 7 GiB; confirmed for R50 bf16
-# (10.5 MiB/item, evidence log §48) and used by R50/R101 bf16 L3-L5. There is deliberately NO smaller default:
-# a new precision with larger staged items must be measured (RSS probe) and get its own entry here before use.
-BF16_ACT=('bf16','bfp8w')
-BUDGETS={'staging_budget_bytes':6979321856,'prepare_host_budget_bytes':7516192768}
-# Trace region: R50 tuned graph has ~2x the R18 operations -> 256 MiB (adapter max).
-TRACE_REGION={'r50':268435456,'r101':268435456}   # R101: more ops than R50 -> adapter max 256 MiB
+from sdv_bmt.dut.eagle_n.executor_source import read_build_record  # noqa: E402
+
+EAGLE_N_ROOT = PurePosixPath("/opt/sdv_assets/eagle_n")
+ASSETS = "eagle_n_integration_assets"
+EXECUTOR = "libeagle_n_ttnn.so"
+# model -> (assets subdirectory, id tag)
+MODELS = {"r18": ("r18", ""), "r50": ("r50_bf16", "-bf16"), "r101": ("r101_bf16", "-bf16")}
+PRECISION = "bf16"
+# Host memory budgets (internal guards), one value for every BF16 plan: each staged item is the same 12 MiB input.
+BUDGETS = {"staging_budget_bytes": 6979321856, "prepare_host_budget_bytes": 7516192768}
+TRACE_REGION_BYTES = {"r18": 67108864, "r50": 268435456, "r101": 268435456}
+# One request timeout and drain for every Eagle-N plan, capture and baseline.
+REQUEST_TIMEOUT_NS = 60_000_000_000
 
 
-def digest(p):
- h=hashlib.sha256()
- with p.open('rb') as f:
-  for b in iter(lambda:f.read(1048576),b''):h.update(b)
- return h.hexdigest()
-def generate(assets:Path,executor:Path,variants=('r18',),precision=None):
- rows=[];cpus=sorted(os.sched_getaffinity(0));executor_hash=digest(executor)
- for variant in variants:
-  # Per-precision R50 assets/configs (2026-11-16) live in <assets>/r50_<precision> with ids suffixed -<precision>;
-  # R18 keeps its layout (<assets>/r18, plain ids). The old plain r50/r101 layout (FP32-conv / untuned, unqualified) was
-  # removed 2026-11-18: --precision is required for r50/r101.
-  if precision and variant not in ('r50','r101'):raise ValueError('--precision applies to r50/r101 only')
-  if variant in ('r50','r101') and not precision:raise ValueError(f'{variant}: --precision bf16|bfp8w is required')
-  tag=f'-{precision}' if precision else '';d=assets/(f'{variant}_{precision}' if precision else variant);plan=d/(variant+'.plan.json');weights=d/(variant+'.weights.f32');record=d/'compile_record.json'
-  pdata=json.loads(plan.read_text())
-  if pdata.get('variant')!=variant:raise ValueError(f'{plan}: variant identity mismatch')
-  if precision and pdata.get('precision')!=precision:raise ValueError(f'{plan}: precision {pdata.get("precision")} != {precision}')
-  if pdata.get('precision') not in BF16_ACT:raise ValueError(f'{plan}: precision {pdata.get("precision")} not supported (BF16 activations only)')
-  declared=PRECISION_DECLARATION[pdata['precision']]
-  budgets=dict(BUDGETS)
-  wid=f'deeplabv3plus-{variant}-cityscapes-v1-eagle-n{tag}';did=f'eagle-n-{variant}{tag}'
-  dut={'schema_version':1,'dut_config_id':did,'adapter':'bos_eagle_n','device':'0','max_inflight':1,
-       'runtime_options':{'device_id':0,'executor':str(executor.resolve()),'executor_sha256':executor_hash,
-        'lock_path':str((assets/'device0.lock').resolve()),'trace_region_bytes':TRACE_REGION.get(variant,67108864) if precision else 67108864,**budgets}}
-  work=yaml.safe_load((ROOT/f'configs/workloads/deeplabv3plus-{variant}-cityscapes-v1.yaml').read_text())
-  work['workload_id']=wid;work['precision']=declared
-  work['options']['device_program']={'language':'bos_ttnn_native_plan','variant':variant,'plan':str(plan.resolve()),'plan_sha256':digest(plan),
-    'weights':str(weights.resolve()),'weights_sha256':digest(weights),'input_bytes':25165824,'output_bytes':2097152,'task_output_bytes':2097152,
-    'compile_record':str(record.resolve()),'compile_record_sha256':digest(record),'qualification':str((d/'native_qualification.json').resolve())}
-  paths={ROOT/f'configs/duts/{did}.yaml':dut,ROOT/f'configs/workloads/{wid}.yaml':work}
-  for stage in ('capture','baseline'):
-   config=yaml.safe_load((ROOT/f'configs/experiments/deeplabv3plus-{variant}-{stage}.yaml').read_text())
-   config['experiment_id']=f'deeplabv3plus-{variant}-eagle-n{tag}-{stage}';config['workload']=f'../workloads/{wid}.yaml';config['dut']=f'../duts/{did}.yaml';config['realtime']['cpu_affinity']=cpus
-   if stage=='baseline':
-    # Never copy GPU golden into the NPU baseline. Filled only after a real NPU capture.
-    golden=d/'npu-capture.golden.jsonl'
-    # SDV-BMT requires a relative output_reference.path: the golden used is the copy in configs/references/
-    # (Boryoung: same name as the GPU golden with "eagle-n" instead of "gpu"); it must equal the captured golden.
-    ref=ROOT/f'configs/references/cityscapes-val500.deeplabv3plus-{variant}-cityscapes-v1.eagle-n{tag}-capture.golden.jsonl'
-    if golden.exists():
-     if not ref.exists() or digest(ref)!=digest(golden):raise SystemExit(f'{ref} missing or differs from {golden}')
-     config['evaluation']['output_reference'].update(path=f'../references/{ref.name}',sha256=digest(ref))
-    else:config['evaluation']['output_reference'].update(path=str(golden.resolve()),sha256='REQUIRES_REAL_NPU_GOLDEN_AFTER_L4')
-   suffix='.yaml.in' if stage=='baseline' and not golden.exists() else '.yaml'
-   path=ROOT/f'configs/experiments/{config["experiment_id"]}{suffix}';paths[path]=config
-  for path,data in paths.items():
-   header='# Generated by tools/eagle_n/configure.py; local experimental native Plan C.\n# Actual NPU execution requires matching native qualification; not provided by Python standalone PASS.\n'
-   if 'baseline' in path.name and not (d/'npu-capture.golden.jsonl').exists():header+='# TEMPLATE ONLY, not runnable YAML: supply actual NPU golden after L4 and rerun configure.py.\n'
-   path.write_text(header+yaml.safe_dump(data,sort_keys=False))
-   rows.append(str(path.relative_to(ROOT)))
- return rows
-def main():
- p=argparse.ArgumentParser();p.add_argument('--assets',type=Path,default=Path('/home/bmt/caontd/eagle_n_integration_assets'));p.add_argument('--executor',type=Path,default=Path('/home/bmt/caontd/eagle_n_integration_assets/libeagle_n_ttnn.so'));p.add_argument('--variant',action='append',choices=('r18','r50','r101'),help='generate only this variant; repeat to select several (default: r18)');p.add_argument('--precision',choices=BF16_ACT,help='required for r50/r101: use <assets>/<variant>_<precision> and -<precision> ids');a=p.parse_args()
- print(json.dumps({'generated':generate(a.assets,a.executor,tuple(a.variant) if a.variant else ('r18',),a.precision)},indent=2))
-if __name__=='__main__':main()
+def digest(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for block in iter(lambda: f.read(1048576), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def ids(model: str) -> tuple[str, str, str]:
+    """DUT id, workload id and experiment id prefix of a model."""
+    tag = MODELS[model][1]
+    return (
+        f"eagle-n-{model}{tag}",
+        f"deeplabv3plus-{model}-cityscapes-v1-eagle-n{tag}",
+        f"deeplabv3plus-{model}-eagle-n{tag}",
+    )
+
+
+def comment(text: str) -> str:
+    return "".join(f"# {line}\n" for line in textwrap.wrap(text, 116))
+
+
+def config_path(relative: str) -> str:
+    return str(EAGLE_N_ROOT / ASSETS / relative)
+
+
+def render(model: str, pins: dict[str, Any], cpus: list[int]) -> dict[Path, tuple[str, dict]]:
+    """Every config of one model from its pins: {path: (header, data)}.
+
+    ``pins``: executor_sha256, executor_source_sha256, plan_sha256, weights_sha256, compile_record_sha256,
+    qualification_sha256 (None before the receipt exists) and golden_sha256 (the NPU capture golden)."""
+    subdir = MODELS[model][0]
+    did, wid, eid = ids(model)
+    dut = {
+        "schema_version": 1,
+        "dut_config_id": did,
+        "adapter": "bos_eagle_n",
+        "device": "0",
+        "max_inflight": 1,
+        "runtime_options": {
+            "device_id": 0,
+            "executor": config_path(EXECUTOR),
+            "executor_sha256": pins["executor_sha256"],
+            "executor_source_sha256": pins["executor_source_sha256"],
+            "lock_path": config_path("device0.lock"),
+            "trace_region_bytes": TRACE_REGION_BYTES[model],
+            **BUDGETS,
+        },
+    }
+    gpu_workload = f"deeplabv3plus-{model}-cityscapes-v1.yaml"
+    work = yaml.safe_load((ROOT / "configs/workloads" / gpu_workload).read_text())
+    work["workload_id"] = wid
+    work["precision"] = PRECISION_DECLARATION[PRECISION]
+    work["options"]["device_program"] = {
+        "language": "bos_ttnn_native_plan",
+        "variant": model,
+        "plan": config_path(f"{subdir}/{model}.plan.json"),
+        "plan_sha256": pins["plan_sha256"],
+        "weights": config_path(f"{subdir}/{model}.weights.f32"),
+        "weights_sha256": pins["weights_sha256"],
+        "input_bytes": 25165824,
+        "output_bytes": 2097152,
+        "task_output_bytes": 2097152,
+        "compile_record": config_path(f"{subdir}/compile_record.json"),
+        "compile_record_sha256": pins["compile_record_sha256"],
+        "qualification": config_path(f"{subdir}/native_qualification.json"),
+        "qualification_sha256": pins["qualification_sha256"],
+    }
+    out = {
+        ROOT
+        / f"configs/duts/{did}.yaml": (
+            comment(
+                "Generated by tools/eagle_n/configure.py. Eagle-N device 0. The executor is pinned by its SHA-256 "
+                "and by the digest of the source it was built from (build record next to the executor)."
+            ),
+            dut,
+        ),
+        ROOT
+        / f"configs/workloads/{wid}.yaml": (
+            comment(
+                f"Generated by tools/eagle_n/configure.py from {gpu_workload}: same model, contract and "
+                "evaluation; the precision declaration and the Eagle-N device program differ. The qualification "
+                "receipt is the L1 record of this plan with the pinned executor."
+            ),
+            work,
+        ),
+    }
+    golden = f"cityscapes-val500.deeplabv3plus-{model}-cityscapes-v1.eagle-n{MODELS[model][1]}-capture.golden.jsonl"
+    for stage in ("capture", "baseline"):
+        gpu_plan = f"deeplabv3plus-{model}-{stage}.yaml"
+        plan = yaml.safe_load((ROOT / "configs/experiments" / gpu_plan).read_text())
+        plan["experiment_id"] = f"{eid}-{stage}"
+        plan["workload"] = f"../workloads/{wid}.yaml"
+        plan["dut"] = f"../duts/{did}.yaml"
+        plan["run"]["request_timeout_ns"] = REQUEST_TIMEOUT_NS
+        plan["run"]["drain_ns"] = REQUEST_TIMEOUT_NS
+        plan["realtime"]["cpu_affinity"] = cpus
+        text = (
+            f"Generated by tools/eagle_n/configure.py from {gpu_plan}. Differences: workload, DUT, CPU affinity "
+            "of the host, and one request timeout and drain for every Eagle-N plan."
+        )
+        if stage == "baseline":
+            plan["evaluation"]["output_reference"].update(path=f"../references/{golden}", sha256=pins["golden_sha256"])
+            text += " Output reference: the model's NPU capture golden (determinism and corruption diagnostic)."
+        out[ROOT / f"configs/experiments/{eid}-{stage}.yaml"] = (comment(text), plan)
+    return out
+
+
+def write(configs: dict[Path, tuple[str, dict]]) -> list[str]:
+    rows = []
+    for path, (header, data) in configs.items():
+        path.write_text(header + yaml.safe_dump(data, sort_keys=False))
+        rows.append(str(path.relative_to(ROOT)))
+    return rows
+
+
+def pins_from_assets(root: Path, model: str) -> dict[str, Optional[str]]:
+    assets = root / ASSETS
+    d = assets / MODELS[model][0]
+    plan = d / f"{model}.plan.json"
+    data = json.loads(plan.read_text())
+    if data.get("variant") != model or data.get("precision") != PRECISION:
+        raise ValueError(
+            f"{plan}: variant {data.get('variant')} / precision {data.get('precision')} is not {model} / {PRECISION}"
+        )
+    build = read_build_record(assets / EXECUTOR)
+    receipt = d / "native_qualification.json"
+    golden = (
+        ROOT
+        / "configs/references"
+        / (f"cityscapes-val500.deeplabv3plus-{model}-cityscapes-v1.eagle-n{MODELS[model][1]}-capture.golden.jsonl")
+    )
+    if not golden.is_file():
+        raise ValueError(f"{golden} missing: the baseline needs the model's NPU capture golden")
+    return {
+        "executor_sha256": build["executor_sha256"],
+        "executor_source_sha256": build["executor_source_sha256"],
+        "plan_sha256": digest(plan),
+        "weights_sha256": digest(d / f"{model}.weights.f32"),
+        "compile_record_sha256": digest(d / "compile_record.json"),
+        "qualification_sha256": digest(receipt) if receipt.is_file() else None,
+        "golden_sha256": digest(golden),
+    }
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--root", type=Path, default=Path(str(EAGLE_N_ROOT)), help="the Eagle-N root on this host")
+    p.add_argument(
+        "--variant", action="append", choices=sorted(MODELS), help="model; repeat for several (default: all)"
+    )
+    a = p.parse_args()
+    cpus = sorted(os.sched_getaffinity(0))
+    rows = []
+    for model in a.variant or sorted(MODELS):
+        rows += write(render(model, pins_from_assets(a.root, model), cpus))
+    print(json.dumps({"generated": rows}, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

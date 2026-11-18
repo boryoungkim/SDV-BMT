@@ -7,11 +7,13 @@
 #            l2     check + in-container describe and validate of the capture and baseline plans (no device)
 #            l3     check + validate + capture (asap) on the NPU + evaluate; mIoU must equal the receipt (L1)
 #            l4     l3 + identity of the new capture against the NPU golden in configs/references (must be 1.0)
-#            l5     check + validate + L5_RUNS baselines (provisional rate), each: identity 1.0, mIoU == L1, no misses
+#            l5     check + validate + L5_RUNS baselines (GPU family rate), each: no error or timeout, identity 1.0
+#                   (drops and deadline misses are reported, not checked)
 #
-# Environment (defaults are the reference host):
-#   EAGLE_N_ASSETS    assets root (executor .so, <model>/ plan+weights+receipt+golden, kernel caches)
+# Environment (defaults: the fixed Eagle-N root /opt/sdv_assets/eagle_n, README "Host setup"):
+#   EAGLE_N_ASSETS    assets root (executor .so, <model>/ plan+weights+receipt, kernel caches)
 #   EAGLE_N_EVIDENCE  evidence root (one directory per launcher call; COMMANDS.log)
+#   EAGLE_N_SDK_ROOT  BOS SDK root, passed to tools/eagle_n/in_container.py (required for l2-l5)
 #   L5_RUNS=5 L5_START=1   baseline runs for l5; restart after a reviewed stop with L5_START=k
 #   WALL_SECONDS=6000      launcher wall time; it only reports, it never kills a container
 #
@@ -22,20 +24,19 @@ set -uo pipefail
 cd "$(dirname "$0")/../.."
 MODEL=${1:-}; LEVEL=${2:-}
 PY=${PY:-.venv/bin/python -B}
-A=${EAGLE_N_ASSETS:-/home/bmt/caontd/eagle_n_integration_assets}
-EVID=${EAGLE_N_EVIDENCE:-/home/bmt/caontd/eagle_n_integration_evidence}
+A=${EAGLE_N_ASSETS:-/opt/sdv_assets/eagle_n/eagle_n_integration_assets}
+EVID=${EAGLE_N_EVIDENCE:-/opt/sdv_assets/eagle_n/eagle_n_integration_evidence}
 WALL=${WALL_SECONDS:-6000}
 E=configs/experiments
 case "$MODEL" in
-  r18)  CAPTURE=$E/deeplabv3plus-r18-eagle-n-capture-asap-t60.yaml
-        BASELINE=$E/deeplabv3plus-r18-eagle-n-baseline-provisional-0p8hz.yaml;   KC=$A/kernel_cache_r18_tuned ;;
-  r50)  CAPTURE=$E/deeplabv3plus-r50-eagle-n-bf16-capture-asap-t60.yaml
-        BASELINE=$E/deeplabv3plus-r50-eagle-n-bf16-baseline-provisional-0p25hz.yaml; KC=$A/kernel_cache_r50_bf16 ;;
-  r101) CAPTURE=$E/deeplabv3plus-r101-eagle-n-bf16-capture-asap-t60.yaml
-        BASELINE=$E/deeplabv3plus-r101-eagle-n-bf16-baseline-provisional-0p2hz.yaml; KC=$A/kernel_cache_r101_bf16 ;;
-  *) sed -n '2,20p' "$0"; exit 2 ;;
+  r18)  ID=deeplabv3plus-r18-eagle-n;       KC=$A/kernel_cache_r18_tuned ;;
+  r50)  ID=deeplabv3plus-r50-eagle-n-bf16;  KC=$A/kernel_cache_r50_bf16 ;;
+  r101) ID=deeplabv3plus-r101-eagle-n-bf16; KC=$A/kernel_cache_r101_bf16 ;;
+  *) sed -n '2,22p' "$0"; exit 2 ;;
 esac
-case "$LEVEL" in check|l2|l3|l4|l5) ;; *) sed -n '2,20p' "$0"; exit 2 ;; esac
+case "$LEVEL" in check|l2|l3|l4|l5) ;; *) sed -n '2,22p' "$0"; exit 2 ;; esac
+CAPTURE=$E/$ID-capture.yaml
+BASELINE=$E/$ID-baseline.yaml
 CHK="$PY tools/eagle_n/eagle_n_checks.py"
 GOLD=$($PY - "$BASELINE" <<'EOF'
 import sys
@@ -75,7 +76,8 @@ run_plan() {  # $1 plan, $2 label; sets RUN and BUNDLE
   { [ -n "$RUN" ] && [ "$RUN" != "$before" ] && [ -f "$RUN/status.json" ]; } \
     || { echo "STOP: launcher refused or did not finish (no new run dir)"; exit 1; }
   echo "run dir: $RUN"; cat "$RUN/status.json"
-  grep -q '"exit_code": 0' "$RUN/status.json" || { echo "STOP: run not clean -> no evaluate, no further run; report"; exit 1; }
+  grep -q '"exit_code": 0' "$RUN/status.json" \
+    || { echo "STOP: run not clean -> no evaluate, no further run; report"; exit 1; }
   BUNDLE=$(ls -d "$RUN"/bundles/*/run-* | head -1); echo "bundle: $BUNDLE"
   $PY tools/eagle_n/in_container.py evaluate "$BUNDLE" --evidence "$EVID" > /dev/null
   local ev; ev=$(ls -td "$EVID"/evaluate_* | head -1)
@@ -94,10 +96,14 @@ if [ "$LEVEL" = l3 ] || [ "$LEVEL" = l4 ]; then
   run_plan "$CAPTURE" "$LEVEL capture"
   $CHK result "$BUNDLE" "$LEVEL" "$CAPTURE" | tee -a "$EVID/COMMANDS.log"
   [ "${PIPESTATUS[0]}" = 0 ] || { echo "STOP: $LEVEL checks not met; report"; exit 1; }
-  $PY tools/stage2b_g_real/capture_golden.py "$BUNDLE" "$RUN/capture.golden.jsonl" || { echo "STOP: golden extraction failed"; exit 1; }
+  $PY tools/stage2b_g_real/capture_golden.py "$BUNDLE" "$RUN/capture.golden.jsonl" \
+    || { echo "STOP: golden extraction failed"; exit 1; }
   if [ "$LEVEL" = l3 ]; then
     echo "golden of this capture: $RUN/capture.golden.jsonl ($(sha256sum "$RUN/capture.golden.jsonl" | cut -c1-12)…)"
-    if [ -f "$GOLD" ]; then cmp -s "$GOLD" "$RUN/capture.golden.jsonl" && echo "same as $GOLD" || echo "DIFFERS from $GOLD: report"; fi
+    if [ -f "$GOLD" ]; then
+      cmp -s "$GOLD" "$RUN/capture.golden.jsonl" || { echo "STOP: golden DIFFERS from $GOLD; report"; exit 1; }
+      echo "same as $GOLD"
+    fi
     echo "=== L3 $MODEL done"; exit 0
   fi
   $CHK identity "$GOLD" "$RUN/capture.golden.jsonl" "$RUN/identity.json" | tail -2
@@ -112,7 +118,8 @@ LIST="$EVID/l5_${MODEL}_runs.txt"
 for i in $(seq "$START" "$N"); do
   run_plan "$BASELINE" "l5 run $i/$N"
   $CHK result "$BUNDLE" l5 "$CAPTURE" | tee -a "$EVID/COMMANDS.log"
-  [ "${PIPESTATUS[0]}" = 0 ] || { echo "STOP run $i: checks not met; report (continue later with L5_START=$((i + 1)) only after review)"; exit 1; }
+  [ "${PIPESTATUS[0]}" = 0 ] \
+    || { echo "STOP run $i: checks not met; report (continue with L5_START=$((i + 1)) only after review)"; exit 1; }
   echo "$i $RUN $BUNDLE" >> "$LIST"
 done
 echo "=== L5 $MODEL done: runs $START..$N; list $LIST"

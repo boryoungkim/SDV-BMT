@@ -7,6 +7,8 @@ ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)
 CXX=${CXX:-$(command -v clang++-17 || command -v clang++ || command -v g++)}
 PYTHON=${PYTHON:-$ROOT/.venv/bin/python}
 "$CXX" --version | head -1
-"$CXX" -std=c++17 -O2 -Wall -Wextra -Werror -o "$ROOT/native/build/sdv-bmt-native-eagle-n" "$ROOT/native/src/main_eagle_n.cpp" -ldl
-PYTHONPATH="$ROOT/src" "$PYTHON" -B -m sdv_bmt.dut.native_source "$ROOT/native" > "$ROOT/native/build/sdv-bmt-native-eagle-n.source-tree.sha256"
-sha256sum "$ROOT/native/build/sdv-bmt-native-eagle-n" "$ROOT/native/build/sdv-bmt-native-eagle-n.source-tree.sha256" /home/bmt/caontd/eagle_n_integration_assets/libeagle_n_ttnn.so
+"$CXX" -std=c++17 -O2 -Wall -Wextra -Werror -o "$ROOT/native/build/sdv-bmt-native-eagle-n" \
+  "$ROOT/native/src/main_eagle_n.cpp" -ldl
+PYTHONPATH="$ROOT/src" "$PYTHON" -B -m sdv_bmt.dut.native_source "$ROOT/native" \
+  > "$ROOT/native/build/sdv-bmt-native-eagle-n.source-tree.sha256"
+sha256sum "$ROOT/native/build/sdv-bmt-native-eagle-n" "$ROOT/native/build/sdv-bmt-native-eagle-n.source-tree.sha256"
