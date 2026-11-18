@@ -6,6 +6,7 @@
 # 3) [project Python 3.11] mIoU with the unmodified sdv_bmt ConfusionCounts.
 # Resumable: re-run with the same OUT to continue. Usage: run_l1_ort.sh [OUT_DIR]
 #   VARIANT=<r18|r50|r101> NPU_DIRS="<part1>/l1 <part2>/l1" NPU_MIOU=<merged NPU mIoU> run_l1_ort.sh
+#   REUSE_ORT=<earlier l1_ort dir of the same ONNX>: take its ORT labels (checked) instead of running ORT again.
 # CPU heavy (4 threads): run only when no NPU run is active.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -15,6 +16,7 @@ OUT=${1:-$EVID/l1_ort_$(date -u +%Y%m%dT%H%M%SZ)}
 VARIANT=${VARIANT:-r18}
 NPU=${NPU_DIRS:?NPU_DIRS required: the l1 directories of the NPU parts}
 MIOU=(--npu-miou "${NPU_MIOU:?NPU_MIOU required: the merged NPU mIoU (l1_merge.py)}")
+REUSE=(); [ -n "${REUSE_ORT:-}" ] && REUSE=(--reuse-ort "$REUSE_ORT")
 mkdir -p "$OUT"
 echo "$0 $*  (out=$OUT, started $(date -u +%FT%TZ))" >> "$OUT/command.txt"
 sha256sum tools/eagle_n/l1_ort.py "$0" > "$OUT/tool_sha256.txt"
@@ -23,7 +25,7 @@ sha256sum "$SP"/../onnxruntime-*.dist-info/RECORD "$SP"/../numpy-*.dist-info/REC
 [ -f "$OUT/input_digests_py311.json" ] || .venv/bin/python -B tools/eagle_n/l1_ort.py --range 0:500 \
     --input-digests "$OUT/input_digests_py311.json"
 nice -n 10 $ORT_PY -I -B tools/eagle_n/l1_ort.py --infer --variant "$VARIANT" --range 0:500 --threads 4 \
-    --expect-input-digests "$OUT/input_digests_py311.json" --npu $NPU --out "$OUT" 2>&1 | tee -a "$OUT/run.log"
+    --expect-input-digests "$OUT/input_digests_py311.json" --npu $NPU --out "$OUT" "${REUSE[@]}" 2>&1 | tee -a "$OUT/run.log"
 .venv/bin/python -B tools/eagle_n/l1_ort.py --score --variant "$VARIANT" "${MIOU[@]}" --range 0:500 --out "$OUT" 2>&1 \
   | tee -a "$OUT/run.log"
 echo "finished $(date -u +%FT%TZ)" >> "$OUT/command.txt"

@@ -12,6 +12,9 @@ Three modes. All sdv_bmt metric code runs unchanged under the project Python (>=
   --score                   [project Python 3.11] decodes the ORT labels (SHA-256 checked), exact TP/FP/FN with
                             the unmodified sdv_bmt ConfusionCounts, ORT mIoU, and the summary report.
 --infer is resumable: items already in OUT/items.jsonl are skipped.
+--infer --reuse-ort DIR takes the ORT labels from an earlier --infer output DIR instead of running ORT again (ORT
+labels do not depend on the NPU). It requires the same ONNX and index digests and, per item, the same canonical input
+digest; each reused label record is SHA-256 checked. Only the agreement with the given NPU labels is computed anew.
 """
 from __future__ import annotations
 import argparse, hashlib, json, platform, sys, time
@@ -104,9 +107,25 @@ def read_blob(path: Path, off: int, length: int, i: int, want_sha: str) -> bytes
     return labels
 
 
+def reused_ort(src: Path, index_bytes: bytes, expected: dict, rng) -> tuple[dict, dict]:
+    """ORT label rows of an earlier --infer output, checked against the current ONNX, index and inputs."""
+    env = json.loads((src / "infer_env.json").read_text())
+    if env.get("onnx_sha256") != ONNX_SHA or env.get("index_sha256") != sha(index_bytes):
+        raise SystemExit(f"--reuse-ort {src}: ONNX or index digest differs")
+    rows = {}
+    for x in (src / "items.jsonl").read_text().splitlines():
+        r = json.loads(x)
+        rows[r["item_index"]] = r
+    for i in rng:
+        if i not in rows:
+            raise SystemExit(f"--reuse-ort {src}: item {i} missing")
+        if rows[i]["input_sha256"] != expected[i]:
+            raise SystemExit(f"--reuse-ort {src}: item {i} canonical input differs")
+    return env, rows
+
+
 def infer(a, lines, index_bytes, rng) -> int:
     import numpy as np
-    import onnxruntime as ort
 
     if not (a.npu and a.expect_input_digests):
         raise SystemExit("--infer needs --npu and --expect-input-digests")
@@ -133,16 +152,23 @@ def infer(a, lines, index_bytes, rng) -> int:
         end = max((r["rle_offset"] + r["rle_length"] for r in rows), default=0)
         with rle_path.open("ab") as f:  # drop a blob written after the last completed item record
             f.truncate(end)
-    opts = ort.SessionOptions()
-    opts.intra_op_num_threads = a.threads
-    opts.inter_op_num_threads = 1
-    session = ort.InferenceSession(str(ONNX), sess_options=opts, providers=["CPUExecutionProvider"])
+    if a.reuse_ort:
+        src_env, src_rows = reused_ort(a.reuse_ort, index_bytes, expected, rng)
+        ort_version, ort_file = src_env["onnxruntime"], src_env["ort_file"]
+    else:
+        import onnxruntime as ort
+
+        opts = ort.SessionOptions()
+        opts.intra_op_num_threads = a.threads
+        opts.inter_op_num_threads = 1
+        session = ort.InferenceSession(str(ONNX), sess_options=opts, providers=["CPUExecutionProvider"])
+        ort_version, ort_file = ort.__version__, ort.__file__
     env = {
         "python": platform.python_version(),
         "executable": sys.executable,
-        "onnxruntime": ort.__version__,
+        "onnxruntime": ort_version,
         "numpy": np.__version__,
-        "ort_file": ort.__file__,
+        "ort_file": ort_file,
         "threads": a.threads,
         "providers": ["CPUExecutionProvider"],
         "onnx": str(ONNX),
@@ -152,6 +178,8 @@ def infer(a, lines, index_bytes, rng) -> int:
         "npu_parts": [str(p) for p in a.npu],
         "range": [rng.start, len(rng)],
     }
+    if a.reuse_ort:
+        env["ort_reused_from"] = {"dir": str(a.reuse_ort.resolve()), "infer_env": src_env}
     (a.out / "infer_env.json").write_text(json.dumps(env, indent=1) + "\n")
     print("ENV " + json.dumps(env), flush=True)
     with items_path.open("a") as items, rle_path.open("ab") as blobs:
@@ -162,11 +190,17 @@ def infer(a, lines, index_bytes, rng) -> int:
             chw = canonical(a.index, rec, i)
             if sha(chw) != expected[i]:
                 raise SystemExit(f"item {i}: canonical input differs from the project-Python digest")
-            x = np.frombuffer(chw, dtype="<f4").reshape(1, 3, H, W)
-            t = time.perf_counter()
-            (lab,) = session.run(["labels"], {"input": x})
-            ms = (time.perf_counter() - t) * 1e3
-            ort_b = np.ascontiguousarray(lab.reshape(H, W), dtype=np.uint8).tobytes()
+            if a.reuse_ort:
+                s = src_rows[i]
+                src_rle = a.reuse_ort / "ort_labels.rle"
+                ort_b = read_blob(src_rle, s["rle_offset"], s["rle_length"], i, s["ort_labels_sha256"])
+                ms = s["ort_ms"]
+            else:
+                x = np.frombuffer(chw, dtype="<f4").reshape(1, 3, H, W)
+                t = time.perf_counter()
+                (lab,) = session.run(["labels"], {"input": x})
+                ms = (time.perf_counter() - t) * 1e3
+                ort_b = np.ascontiguousarray(lab.reshape(H, W), dtype=np.uint8).tobytes()
             if ort_b.translate(None, bytes(range(19))):
                 raise SystemExit(f"item {i}: ORT label outside 0..18")
             path, off_n, len_n, npu_sha = npu[i]
@@ -269,6 +303,7 @@ def main() -> int:
     ap.add_argument("--npu", type=Path, nargs="+", help="l1_native output dirs (items.jsonl + labels.rle)")
     ap.add_argument("--out", type=Path)
     ap.add_argument("--threads", type=int, default=4)
+    ap.add_argument("--reuse-ort", type=Path, metavar="DIR", help="--infer: ORT labels from an earlier --infer output")
     ap.add_argument("--variant", choices=sorted(VARIANTS), default="r18")
     ap.add_argument(
         "--npu-miou", type=float, help="NPU L1 mIoU to compare with: the merged L1 NPU mIoU (tools/eagle_n/l1_merge.py)"
