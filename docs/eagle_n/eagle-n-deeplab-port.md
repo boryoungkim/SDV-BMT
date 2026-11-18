@@ -18,7 +18,7 @@ evidence root on the reference host.
 | Precision | BF16 activations and weights, FP32 accumulation (`bf16-conv-fp32dst`); the only precision accepted |
 | Graph | A manual TTNN C++ graph built from a plan exported offline (`tools/eagle_n/export_plan.py`). R-50 and R-101 use the tuned graph with layer4 and the head split into blocks whose shapes already ran on this NPU (`decompose_proven.py`) |
 | Workloads | `configs/workloads/deeplabv3plus-<model>-cityscapes-v1-eagle-n[-bf16].yaml` |
-| Plans | Per model: `…-capture.yaml` (asap, produces the golden) and `…-baseline.yaml` (GPU family rate, deadline = frame period). Both are the GPU plans with this workload and DUT, the host CPU affinity and one request timeout and drain for every Eagle-N plan |
+| Plans | Per model: `…-capture.yaml` (asap, produces the golden) and `…-baseline.yaml` (the Eagle-N rate of the model, deadline = frame period). Both are the GPU plans with this workload and DUT, the host CPU affinity and one request timeout and drain for every Eagle-N plan; the baseline also has its own rate (`BASELINE_RATE_HZ` in `tools/eagle_n/configure.py`: the GPU family rule, the highest candidate rate whose frame period is at least 1.25 x the largest DUT service time of the capture, applied to the Eagle-N capture with candidates below 1 Hz) |
 | Goldens | `configs/references/cityscapes-val500.deeplabv3plus-<model>-cityscapes-v1.eagle-n[-bf16]-capture.golden.jsonl` |
 | Generator | `tools/eagle_n/configure.py` writes every Eagle-N config; do not edit them by hand |
 | Reproduction | `tools/eagle_n/README.md` |

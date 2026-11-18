@@ -11,12 +11,14 @@ import hashlib
 import importlib.util
 import json
 import os
+import subprocess
 from pathlib import Path
 
 import pytest
 import yaml
 
 from sdv_bmt.contracts.specs import DUTConfig, WorkloadSpec, parse_strict
+from sdv_bmt.runner.plan import frame_period_ns
 from sdv_bmt.contracts.status import CompletionModel
 from sdv_bmt.dut.eagle_n import adapter as eagle
 from sdv_bmt.dut.eagle_n.adapter import EagleNDUT, EagleNOptions, EagleNProgram
@@ -159,6 +161,15 @@ def test_plans_are_the_gpu_plans_with_one_eagle_n_timeout(name, stage):
         assert _sha(_paths(name)["baseline"].parent / ref["path"]) == ref["sha256"]
         gpu["evaluation"].pop("output_reference")
         eagle_plan["evaluation"].pop("output_reference")
+        # the Eagle-N baseline rate of the model, deadline = its frame period (tools/eagle_n/configure.py)
+        m = _module("eagle_configure_rate", "tools/eagle_n/configure.py")
+        assert eagle_plan["replay"]["rate_hz"] == m.BASELINE_RATE_HZ[model]
+        assert eagle_plan["evaluation"]["deadline"] == {
+            "policy": "frame_period", "period_ns": frame_period_ns(m.BASELINE_RATE_HZ[model])
+        }
+        for d in (eagle_plan, gpu):
+            d["replay"].pop("rate_hz")
+            d["evaluation"]["deadline"].pop("period_ns")
     for d in (eagle_plan, gpu):
         for k in ("experiment_id", "workload", "dut"):
             d.pop(k)
@@ -541,3 +552,21 @@ def test_r50_bf16_decomposition_is_proven_and_equivalent():
         return {**o, "launch": {k: v for k, v in o["launch"].items() if k != "reason"}} if "launch" in o else o
 
     assert [strip(o) for o in recon["ops"][:101]] == [strip(o) for o in plan["ops"][:101]]  # ops #0-#100: device-proven
+
+
+def test_npu_user_check_needs_sudo(monkeypatch, tmp_path):
+    """fuser exits 1 for 'no user' and a refused sudo exits 1 too: without sudo -n the check must stop."""
+    m = _module("eagle_container_sudo", "tools/eagle_n/in_container.py")
+    device = tmp_path / "bos0"
+    device.write_text("")
+    monkeypatch.setattr(m, "DEVICE", str(device))
+    calls = []
+
+    def run(cmd, **kw):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 1, "", "sudo: a password is required")
+
+    monkeypatch.setattr(m.subprocess, "run", run)
+    with pytest.raises(ValueError, match="sudo -n unavailable"):
+        m.npu_idle()
+    assert calls == [["sudo", "-n", "true"]]  # fuser is not asked

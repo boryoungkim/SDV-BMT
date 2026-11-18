@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # Run one SDV-BMT model end to end on this host: validate, timed runs, evaluation, metric table.
 #
-#   tools/run_model.sh list                      the model names: 12 on the GPU (+ CenterPoint mini), 3 RNGD, 5 MLA400
+#   tools/run_model.sh list                      the model names: 12 on the GPU (+ CenterPoint mini), 3 RNGD, 5 MLA400,
+#                                                1 Eagle-N
 #   tools/run_model.sh <model> [--dry-run]       one model (llama-<m> runs on the GPU, llama-<m>-rngd on the RNGD card;
 #                                                centerpoint-pillar02-mini: CenterPoint on the 162 mini samples only)
 #   tools/run_model.sh all [--dry-run]           the 12 models on the GPU in order (a failed model does not stop the rest)
 #   tools/run_model.sh all-mla400 [--dry-run]    the 5 Mobilint MLA400 models in order, on the NPU host
+#   tools/run_model.sh deeplabv3plus-r18-eagle-n DeepLabV3+ R-18 on the BOS Eagle-N NPU, on its host (R-50 and R-101 run
+#                                                on the GPU)
 #
 # --dry-run prints the commands and checks the configuration files; it uses no device and writes nothing.
 #
@@ -19,9 +22,17 @@
 #   (tools/mobilint/build_native.sh), the device node of the DUT config and the compiled models (.mxq) named by the
 #   workloads (tools/mobilint/README.md).  MLA400_DEVICE overrides the device file checked for other users
 #   (default: the device of the DUT config), as in tools/mobilint/run_series_mla400.sh.
+#   Eagle-N models (deeplabv3plus-r18-eagle-n) run on the host of the BOS Eagle-N board, through the BOS container
+#   launcher tools/eagle_n/in_container.py (validate and every run inside the container; evaluation and table on the
+#   host).  They need EAGLE_N_SDK_ROOT, the native runner (in_container.py build-runner), the Eagle-N assets below
+#   /opt/sdv_assets/eagle_n with the qualification receipt (tools/eagle_n/README.md) and a sudo timestamp (the
+#   launcher uses sudo -n for Docker, the private hugepage mount and the NPU user check; on a terminal the script
+#   asks for the sudo password once when there is none).
+#   The launcher runs in its own process group, so Ctrl-C does not reach a process that holds the NPU (never killed).
 #
 # Output:
-#   $R/vision/<experiment>/run-*/ ...          CNN / LiDAR run bundles and their evaluations
+#   $R/vision/<experiment>/run-*/ ...          CNN / LiDAR run bundles and their evaluations (Eagle-N: a copy of the
+#                                              bundle; the launcher's evidence stays in the Eagle-N evidence root)
 #   $R/llm/<experiment>/run-*/ ...             LLM run bundles and their evaluations (tools/llm/run_baselines.sh)
 #   $R/logs/<model>.log                        everything the commands printed
 #   $R/tables/<model>.metrics.csv              metric table (docs/metric_table.md)
@@ -47,7 +58,17 @@ MODELS=(yolox-tiny yolox-s yolox-m yolox-l yolox-x deeplabv3plus-r18 deeplabv3pl
 CP_MINI=centerpoint-pillar02-mini   # CenterPoint on the mini set only (no val run series), on the GPU
 RNGD=(llama-3.2-1b-instruct-rngd llama-3.2-3b-instruct-rngd llama-3.1-8b-instruct-rngd)        # FuriosaAI RNGD card
 MLA400=(yolox-tiny-mla400 yolox-s-mla400 yolox-m-mla400 yolox-l-mla400 yolox-x-mla400)   # Mobilint NPU host
+EAGLE_N=(deeplabv3plus-r18-eagle-n)                                                       # BOS Eagle-N host
 MLA_RUNNER=${SDV_BMT_NATIVE_DIR:-native/build}/sdv-bmt-native-mobilint
+EN_RUNNER=${SDV_BMT_NATIVE_DIR:-native/build}/sdv-bmt-native-eagle-n
+EN_PY=${EN_PY:-.venv/bin/python}      # EN_PY, EN_LAUNCH and SUDO can be replaced for tests of this script
+EN_LAUNCH=${EN_LAUNCH:-tools/eagle_n/in_container.py}
+SUDO=${SUDO:-sudo}
+EN_ASSETS=${EAGLE_N_ASSETS:-/opt/sdv_assets/eagle_n/eagle_n_integration_assets}
+EN_EVID=${EAGLE_N_EVIDENCE:-/opt/sdv_assets/eagle_n/eagle_n_integration_evidence}
+EN_DEV=${EAGLE_N_DEVICE:-/dev/bos/0}
+EN_WALL=${WALL_SECONDS:-6000}   # launcher wall time; it only reports, it never kills a container
+EN_KEEP=      # the sudo timestamp keeper during Eagle-N runs
 NPU_DEV=
 PRE_RUN=      # a check run before every timed run (MLA400: the NPU device is free)
 DRY=0
@@ -77,7 +98,7 @@ typical_s() {  # typical duration of one unit on the reference host, seconds (yo
   case $1 in   # estimate; the MLA400 runs were not timed on this host)
     yolox-*) echo 150 ;; deeplabv3plus-*) echo 460 ;; centerpoint-mini|centerpoint-pillar02-mini) echo 45 ;;
     centerpoint-series) echo 1700 ;;
-    llama-gpu) echo 540 ;; llama-rngd) echo 660 ;; *) echo 0 ;;
+    llama-gpu) echo 540 ;; llama-rngd) echo 660 ;; eagle-n) echo 600 ;; *) echo 0 ;;  # eagle-n: an estimate
   esac
 }
 
@@ -128,7 +149,9 @@ take_mark() {  # what
   printf 'start=%s\nsession=tools/run_model.sh\nwhat=%s\n' "$(date -Iseconds)" "$1" > "$MARK"; OWN_MARK=1
 }
 drop_mark() { [ $OWN_MARK = 1 ] && rm -f "$MARK"; OWN_MARK=0; }
-trap 'echo; say "interrupted"; [ -n "$TICKER" ] && kill "$TICKER" 2>/dev/null; drop_mark; exit 130' INT TERM
+trap 'echo; say "interrupted"; [ -n "$TICKER" ] && kill "$TICKER" 2>/dev/null; en_keep_stop; drop_mark
+      [ -n "$EN_KEEP_NOTE" ] && say "$EN_KEEP_NOTE"; exit 130' INT TERM
+EN_KEEP_NOTE=
 
 last_status() {  # execution / measurement status of the last run in the model log
   grep -o '"\(execution\|measurement\)_status": "[a-z_]*"' "$LOG" | tail -2 | sed 's/.*: "\(.*\)"/\1/' | paste -sd/
@@ -229,6 +252,96 @@ run_mla400_model() {  # name
   return $rc
 }
 
+# ---------------------------------------------------------------- BOS Eagle-N (on the NPU host)
+
+en_keep_start() {  # keep the sudo timestamp alive while the launcher runs (it uses sudo -n before and after a run)
+  [ $DRY = 1 ] && return 0
+  ( while sleep 60; do "$SUDO" -n -v || exit; done ) > /dev/null 2>&1 & EN_KEEP=$!
+}
+en_keep_stop() { [ -n "$EN_KEEP" ] && kill "$EN_KEEP" 2>/dev/null; EN_KEEP=; }
+
+en_isolated() {  # CMD...: run CMD in its own process group of this session and wait for it. Ctrl-C reaches only the
+  set -m          # foreground group (this script), never a launcher that holds the NPU; the session and the terminal
+  "$@" < /dev/null &  # stay the same, so the terminal's sudo timestamp still applies (setsid would lose it)
+  local pid=$!
+  set +m
+  wait "$pid"
+}
+
+en_kernel_cache() {  # name: the TT-Metal kernel cache of the model (as tools/eagle_n/run_eagle_n.sh)
+  case $1 in deeplabv3plus-r18-eagle-n) echo "$EN_ASSETS/kernel_cache_r18_tuned" ;; esac
+}
+
+en_evidence() { sed -n 's/^Evidence: //p' "$LOG" | tail -1; }  # the launcher's newest evidence directory
+
+eagle_n_ready() {  # name: what an Eagle-N run needs, checked before anything runs
+  local name=$1 cfg=configs/experiments/$1-baseline.yaml dut exe bad=0
+  [ -f "$cfg" ] || { say "$name: missing $cfg"; return 1; }
+  dut=$(dirname "$cfg")/$(yaml_value "$cfg" dut); exe=$(yaml_value "$dut" executor)
+  say "$name: NPU $EN_DEV, executor $exe"
+  [ $DRY = 1 ] && return 0
+  [ -n "${EAGLE_N_SDK_ROOT:-}" ] && [ -d "${EAGLE_N_SDK_ROOT:-}" ] \
+    || { say "$name: export EAGLE_N_SDK_ROOT (the BOS SDK root) first (tools/eagle_n/README.md)"; bad=1; }
+  [ -x "$EN_RUNNER" ] \
+    || { say "$name: $EN_RUNNER missing; build it first: .venv/bin/python tools/eagle_n/in_container.py build-runner"; bad=1; }
+  [ -f "$EN_ASSETS/$(basename "$exe")" ] \
+    || { say "$name: $EN_ASSETS/$(basename "$exe") missing (Eagle-N assets, tools/eagle_n/README.md host setup)"; bad=1; }
+  [ -e "$EN_DEV" ] || { say "$name: $EN_DEV does not exist (not the Eagle-N host, or the driver is not loaded)"; bad=1; }
+  [ $bad = 0 ] || return 1
+  if ! "$SUDO" -n true 2>/dev/null; then  # a sudo timestamp counts for one terminal only (script -c opens a new one)
+    if [ -t 0 ]; then
+      say "$name: the launcher uses sudo -n (Docker, hugepage mount, NPU user check): enter the sudo password once"
+      "$SUDO" -v || { say "$name: no sudo timestamp; nothing started"; return 1; }
+    else
+      say "$name: the launcher uses sudo -n (Docker, hugepage mount, NPU user check); run 'sudo -v' first"; return 1
+    fi
+  fi
+  return 0
+}
+
+eagle_n_runs() {  # name: validate in the container, REPS runs in the container (bundles copied to $R/vision)
+  local name=$1 exp=$1-baseline cfg=configs/experiments/$1-baseline.yaml kc ev b i
+  kc=$(en_kernel_cache "$name")
+  if [ $DRY = 0 ] && compgen -G "$R/vision/$exp/run-*" > /dev/null; then
+    say "$name: $R/vision/$exp already has runs; use a new R"; return 3
+  fi
+  say "$name: validate $cfg (in the BOS container, no device)"
+  x "$EN_PY" -B "$EN_LAUNCH" validate "$cfg" --evidence "$EN_EVID" || { say "$name: validate rejected (see $LOG)"; return 1; }
+  if [ $DRY = 0 ] && ! grep -q '"status": "valid"' "$(en_evidence)/run.log" 2>/dev/null; then
+    say "$name: validate rejected (see $LOG)"; return 1
+  fi
+  for i in $(seq 1 "$REPS"); do
+    EN_KEEP_NOTE="$name: the Eagle-N launcher keeps running (never killed); wait until it ends (see $LOG)"
+    watch "$name run $i/$REPS" "$(typical_s eagle-n)" "" en_isolated "$EN_PY" -B "$EN_LAUNCH" run "$cfg" \
+      --evidence "$EN_EVID" --kernel-cache "$kc" --wall-seconds "$EN_WALL" \
+      || { EN_KEEP_NOTE=; say "$name run $i/$REPS failed (see $LOG; never kill a container that holds the NPU)"; return 1; }
+    EN_KEEP_NOTE=
+    [ $DRY = 1 ] && continue
+    ev=$(en_evidence)
+    grep -q '"exit_code": 0' "$ev/status.json" 2>/dev/null \
+      || { say "$name run $i/$REPS: launcher status not clean ($ev/status.json)"; return 1; }
+    b=$(compgen -G "$ev/bundles/$exp/run-*" | head -1)
+    [ -n "$b" ] || { say "$name run $i/$REPS: no run bundle in $ev/bundles/$exp"; return 1; }
+    mkdir -p "$R/vision/$exp" && cp -a "$b" "$R/vision/$exp/" \
+      && { [ -f "$R/vision/$exp/experiment.json" ] || cp -a "$ev/bundles/$exp/experiment.json" "$R/vision/$exp/"; } \
+      || { say "$name: copy of $b failed"; return 1; }
+    say "$name run $i/$REPS  $(last_status)  (evidence $ev)"
+  done
+  evaluate_dirs "$name" "$CAT" "$R/vision/$exp"/run-*/
+}
+
+run_eagle_n_model() {  # name
+  local name=$1 rc
+  eagle_n_ready "$name" || return 1
+  take_mark "$name" || return $?
+  en_keep_start
+  eagle_n_runs "$name"; rc=$?
+  en_keep_stop
+  drop_mark
+  [ $rc = 0 ] || return $rc
+  make_table "$name" sdv_bmt.cli.table "$R/vision/$name-baseline"
+}
+
 series_parts() { echo "parts done $(compgen -G "$R/vision/centerpoint-pillar02-val-series/series-*/part-*/manifest.json" | wc -l)/7"; }
 
 run_centerpoint() {
@@ -307,6 +420,7 @@ run_one() {  # model -> 0 ok, 1 failed, 3 refused; ELAPSED = seconds taken
   [ $DRY = 1 ] && LOG=/dev/null
   case $name in
     yolox-*-mla400) run_mla400_model "$name" ;;
+    *-eagle-n) run_eagle_n_model "$name" ;;
     yolox-*|deeplabv3plus-*|"$CP_MINI") run_vision_model "$name" ;;
     centerpoint-pillar02) run_centerpoint ;;
     llama-*) run_llama "$name" ;;
@@ -317,7 +431,7 @@ run_one() {  # model -> 0 ok, 1 failed, 3 refused; ELAPSED = seconds taken
   return $rc
 }
 
-known() { local m; for m in "${MODELS[@]}" "$CP_MINI" "${RNGD[@]}" "${MLA400[@]}"; do [ "$m" = "$1" ] && return 0; done; return 1; }
+known() { local m; for m in "${MODELS[@]}" "$CP_MINI" "${RNGD[@]}" "${MLA400[@]}" "${EAGLE_N[@]}"; do [ "$m" = "$1" ] && return 0; done; return 1; }
 
 plans_of() {  # model: the plan files its runs use
   case $1 in
@@ -356,7 +470,7 @@ print_datasets() {  # model...: the input data of the given models, each once, u
   for p in "${ds[@]:1}"; do printf '  %-16s %s\n' "" "$p"; done
 }
 
-usage() { sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; }
 
 main() {
   local target=${1:-} arg
@@ -366,7 +480,7 @@ main() {
   done
   case $target in
     ""|-h|--help) usage; exit 2 ;;
-    list) printf '%s\n' "${MODELS[@]}" "$CP_MINI" "${RNGD[@]}" "${MLA400[@]}"; exit 0 ;;
+    list) printf '%s\n' "${MODELS[@]}" "$CP_MINI" "${RNGD[@]}" "${MLA400[@]}" "${EAGLE_N[@]}"; exit 0 ;;
   esac
   local -a group=()
   case $target in

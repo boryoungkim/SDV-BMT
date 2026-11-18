@@ -11,7 +11,8 @@ For DeepLabV3+ R-18 (the only Eagle-N model configured) it writes:
   their SHA-256; ``qualification_sha256`` is null until the receipt exists);
 - ``configs/experiments/deeplabv3plus-<model>-eagle-n<tag>-{capture,baseline}.yaml``: the GPU plans with this
   workload and DUT, the CPU affinity of this process and one request timeout and drain for every Eagle-N plan. The
-  baseline uses the model's NPU capture golden in ``configs/references``.
+  baseline uses the model's NPU capture golden in ``configs/references`` and its own replay rate
+  (``BASELINE_RATE_HZ``), with the deadline at the frame period of that rate.
 
 Every path in the configs starts with the fixed root ``/opt/sdv_assets/eagle_n`` (tools/eagle_n/README.md, host
 setup), so the configs are the same on every host. ``--root`` is where that root is on this host.
@@ -34,6 +35,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 from sdv_bmt.dut.eagle_n.adapter import PRECISION_DECLARATION  # noqa: E402
 from sdv_bmt.dut.eagle_n.executor_source import read_build_record  # noqa: E402
+from sdv_bmt.runner.plan import frame_period_ns  # noqa: E402
 
 EAGLE_N_ROOT = PurePosixPath("/opt/sdv_assets/eagle_n")
 ASSETS = "eagle_n_integration_assets"
@@ -46,6 +48,11 @@ BUDGETS = {"staging_budget_bytes": 6979321856, "prepare_host_budget_bytes": 7516
 TRACE_REGION_BYTES = {"r18": 67108864}
 # One request timeout and drain for every Eagle-N plan, capture and baseline.
 REQUEST_TIMEOUT_NS = 60_000_000_000
+# Baseline replay rate of the Eagle-N plans. The rule of the GPU family (plan v03 section 4.5,
+# tools/deeplab_family/choose_rate.py: the highest candidate rate whose frame period is at least 1.25 x the largest
+# DUT service time of the asap capture) applied to the Eagle-N capture of the model, with the candidates extended
+# below 1 Hz to 0.8 and 0.5 Hz. The deadline stays the frame period (floor(1e9 / rate)).
+BASELINE_RATE_HZ = {"r18": 0.8}
 
 
 def digest(path: Path) -> str:
@@ -150,8 +157,14 @@ def render(model: str, pins: dict[str, Any], cpus: list[int]) -> dict[Path, tupl
             "of the host, and one request timeout and drain for every Eagle-N plan."
         )
         if stage == "baseline":
+            rate = BASELINE_RATE_HZ[model]
+            plan["replay"]["rate_hz"] = rate
+            plan["evaluation"]["deadline"]["period_ns"] = frame_period_ns(rate)
             plan["evaluation"]["output_reference"].update(path=f"../references/{golden}", sha256=pins["golden_sha256"])
-            text += " Output reference: the model's NPU capture golden (determinism and corruption diagnostic)."
+            text += (
+                " Baseline rate: the Eagle-N rate of the model (BASELINE_RATE_HZ), deadline = its frame period."
+                " Output reference: the model's NPU capture golden (determinism and corruption diagnostic)."
+            )
         out[ROOT / f"configs/experiments/{eid}-{stage}.yaml"] = (comment(text), plan)
     return out
 
