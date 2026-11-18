@@ -261,7 +261,7 @@ def test_eagle_n_dry_run_names_the_container_launcher_and_writes_nothing(tmp_pat
     assert not (tmp_path / "bench").exists()
     cfg = "configs/experiments/deeplabv3plus-r18-eagle-n-baseline.yaml"
     assert (REPO_ROOT / cfg).is_file() and f"in_container.py validate {cfg}" in proc.stdout
-    assert f"setsid -w .venv/bin/python -B tools/eagle_n/in_container.py run {cfg}" in proc.stdout
+    assert f"en_isolated .venv/bin/python -B tools/eagle_n/in_container.py run {cfg}" in proc.stdout
     assert "--kernel-cache /opt/sdv_assets/eagle_n/eagle_n_integration_assets/kernel_cache_r18_tuned" in proc.stdout
     assert "NPU /dev/bos/0, executor /opt/sdv_assets/eagle_n/eagle_n_integration_assets/libeagle_n_ttnn.so" in proc.stdout
     assert "--catalog sdv-bmt-model-metric-set-v1.1" in proc.stdout and proc.stdout.count("sdv_bmt.cli.table") == 1

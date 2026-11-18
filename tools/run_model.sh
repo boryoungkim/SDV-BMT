@@ -28,7 +28,7 @@
 #   /opt/sdv_assets/eagle_n with the qualification receipt (tools/eagle_n/README.md) and a sudo timestamp (the
 #   launcher uses sudo -n for Docker, the private hugepage mount and the NPU user check; on a terminal the script
 #   asks for the sudo password once when there is none).
-#   The launcher runs in its own session, so Ctrl-C does not reach a process that holds the NPU (it is never killed).
+#   The launcher runs in its own process group, so Ctrl-C does not reach a process that holds the NPU (never killed).
 #
 # Output:
 #   $R/vision/<experiment>/run-*/ ...          CNN / LiDAR run bundles and their evaluations (Eagle-N: a copy of the
@@ -260,6 +260,14 @@ en_keep_start() {  # keep the sudo timestamp alive while the launcher runs (it u
 }
 en_keep_stop() { [ -n "$EN_KEEP" ] && kill "$EN_KEEP" 2>/dev/null; EN_KEEP=; }
 
+en_isolated() {  # CMD...: run CMD in its own process group of this session and wait for it. Ctrl-C reaches only the
+  set -m          # foreground group (this script), never a launcher that holds the NPU; the session and the terminal
+  "$@" < /dev/null &  # stay the same, so the terminal's sudo timestamp still applies (setsid would lose it)
+  local pid=$!
+  set +m
+  wait "$pid"
+}
+
 en_kernel_cache() {  # name: the TT-Metal kernel cache of the model (as tools/eagle_n/run_eagle_n.sh)
   case $1 in deeplabv3plus-r18-eagle-n) echo "$EN_ASSETS/kernel_cache_r18_tuned" ;; esac
 }
@@ -304,7 +312,7 @@ eagle_n_runs() {  # name: validate in the container, REPS runs in the container 
   fi
   for i in $(seq 1 "$REPS"); do
     EN_KEEP_NOTE="$name: the Eagle-N launcher keeps running (never killed); wait until it ends (see $LOG)"
-    watch "$name run $i/$REPS" "$(typical_s eagle-n)" "" setsid -w "$EN_PY" -B "$EN_LAUNCH" run "$cfg" \
+    watch "$name run $i/$REPS" "$(typical_s eagle-n)" "" en_isolated "$EN_PY" -B "$EN_LAUNCH" run "$cfg" \
       --evidence "$EN_EVID" --kernel-cache "$kc" --wall-seconds "$EN_WALL" \
       || { EN_KEEP_NOTE=; say "$name run $i/$REPS failed (see $LOG; never kill a container that holds the NPU)"; return 1; }
     EN_KEEP_NOTE=
