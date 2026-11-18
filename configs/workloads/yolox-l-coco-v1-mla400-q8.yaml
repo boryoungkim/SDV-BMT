@@ -1,0 +1,33 @@
+# YOLOX NPU port (ACTUAL, Mobilint MLA400): YOLOX-L, the same model artifact as yolox-l-coco-v1.yaml (Megvii
+# YOLOX release 0.1.1rc0, artifact_sha256 = SHA-256 of yolox_l.onnx), compiled for the ARIES NPU (aries-rb) by
+# qbcompiler 1.4.1 with the vendor default 8-bit quantization, calibrated on 100 COCO train2017 images (seed 0,
+# disjoint from the evaluation subset, canonical preprocessing; tools/mobilint/make_calib.py).
+# The compiled graph ends at the nine head convolutions (tools/mobilint/cut_head.py): the weight-free head tail
+# (sigmoid on objectness and classes, concat) runs on the host in the backend's collect().
+# Same preprocess, postprocess, codec and raw output contract
+# (8400 x 85 float32) as the GPU workload, which also declares the quality evaluator.
+# The compiled model is not committed: mxq is a host path, pinned by mxq_sha256. Workload id naming rule pending.
+schema_version: 1
+workload_id: yolox-l-coco-v1-mla400-q8
+implementation: yolox_coco
+task: coco-2017-object-detection
+artifact_sha256: 7860ae79de6c89a3c1eb72ae9a2756c0ccfbe04b7791bb5880afabd97855a411
+precision: int8
+batch: 1
+preprocess: {id: yolox-letterbox-bilinear-bgr, version: "1"}
+postprocess: {id: yolox-decode-nms-coco, version: "1"}
+codec: {id: canonical-json-utf8, version: "1"}
+output_ready: canonical task output (COCO detections of the image after decode, class-aware NMS and top-100) encoded and appended to outputs.bin
+quality_evaluator: coco-detection-bbox/1
+options:
+  input_size: 640
+  num_anchors: 8400
+  device_program:
+    language: mobilint_mxq
+    mxq: ~/sdv_assets/compile/head9/yolox_l_head9.mxq
+    mxq_sha256: d9307df547a79d502c73a332186ef3e6b366432339868687ffc325c075ddabd6
+    graph: head9
+    cut_onnx_sha256: fab9251ecb542f2af157faa458449fab099ddc63083ba3f33b38d2c08a7884c7
+    compile_record: ~/sdv_assets/compile/head9/yolox_l_head9.cut.json
+    input_bytes: 4915200
+    task_output_bytes: 2856000

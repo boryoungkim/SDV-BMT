@@ -4,12 +4,16 @@
 #   make -C native            -> build/sdv-bmt-native-fake, build/sdv-bmt-native-nvidia, build/sdv-bmt-native-tests
 #   make -C native portable   -> build/sdv-bmt-native-fake, build/sdv-bmt-native-tests (no CUDA / cuDNN needed)
 #   make -C native raw-dump   -> build/sdv-bmt-raw-dump (offline validation tool, tools/stage2b_g_real/raw_dump.cpp)
+#   make -C native mobilint   -> build/sdv-bmt-native-mobilint (Mobilint ARIES NPU; qbruntime C++ 1.5.0, see QBRT_*)
 # Every executable gets a build stamp <executable>.source-tree.sha256: the digest of the native source tree
 # (python3 -m sdv_bmt.dut.native_source), plus the tool's own source for raw-dump.  A run refuses an executable
 # whose stamp differs from the current sources (v0.1.2 safeguard), so every file of that digest is a
 # prerequisite of every executable here.
 CUDA_HOME ?= /usr/local/cuda-13.0
 CUDNN_ROOT ?= /usr/local/lib/python3.10/dist-packages/nvidia/cudnn
+QBRT_ROOT ?= $(HOME)/sdv_assets/qbruntime-1.5.0
+QBRT_INC ?= /usr/include/qbruntime
+QBRT_LIB ?= /usr/lib/x86_64-linux-gnu/libqbruntime.so.1.5.0
 CXX ?= g++
 CXXFLAGS ?= -O2 -std=c++17 -Wall -Wextra -Werror
 PYTHON ?= python3
@@ -26,6 +30,8 @@ all: $(BUILD)/sdv-bmt-native-fake $(BUILD)/sdv-bmt-native-nvidia $(BUILD)/sdv-bm
 portable: $(BUILD)/sdv-bmt-native-fake $(BUILD)/sdv-bmt-native-tests
 
 raw-dump: $(BUILD)/sdv-bmt-raw-dump
+
+mobilint: $(BUILD)/sdv-bmt-native-mobilint
 
 $(BUILD):
 	mkdir -p $(BUILD)
@@ -46,7 +52,19 @@ $(BUILD)/sdv-bmt-raw-dump: $(DIGEST_SRCS) $(RAW_DUMP_SRC) | $(BUILD)
 	$(CXX) $(CXXFLAGS) -I$(CUDA_HOME)/include -I$(CUDNN_ROOT)/include -Isrc -o $@ $(RAW_DUMP_SRC) $(NVIDIA_LINK)
 	$(STAMP) $(abspath $(RAW_DUMP_SRC)) > $@.source-tree.sha256
 
+# Mobilint runner.  The host may also hold an older qbruntime C++ in /usr/local, which the compiler and the loader
+# search first: a private directory of symlinks to the 1.5.0 header directory and library is searched with -isystem
+# and found at run time through RUNPATH; the shared system is not modified.  Not part of all/portable.
+$(BUILD)/sdv-bmt-native-mobilint: $(DIGEST_SRCS) | $(BUILD)
+	mkdir -p $(QBRT_ROOT)/include $(QBRT_ROOT)/lib
+	ln -sfn $(QBRT_INC) $(QBRT_ROOT)/include/qbruntime
+	ln -sfn $(QBRT_LIB) $(QBRT_ROOT)/lib/libqbruntime.so
+	ln -sfn $(QBRT_LIB) $(QBRT_ROOT)/lib/libqbruntime.so.1
+	$(CXX) $(CXXFLAGS) -isystem $(QBRT_ROOT)/include -o $@ src/main_mobilint.cpp \
+	    -L$(QBRT_ROOT)/lib -Wl,-rpath,$(QBRT_ROOT)/lib -lqbruntime -ldl -lpthread
+	$(STAMP) > $@.source-tree.sha256
+
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all portable raw-dump clean
+.PHONY: all portable raw-dump mobilint clean
