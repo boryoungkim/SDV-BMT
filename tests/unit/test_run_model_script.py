@@ -57,6 +57,7 @@ echo "$mode $target $*" >> "$5/calls.txt"
 case $mode in
   validate) echo '{"status": "valid"}' > "$ev/run.log" ;;
   run) exp=$(basename "$target" .yaml); d=$ev/bundles/$exp/run-$(date +%s%N); mkdir -p "$d"; touch "$d/manifest.json"
+       echo '{}' > "$ev/bundles/$exp/experiment.json"
        printf '{\\n  "execution_status": "completed",\\n  "measurement_status": "valid"\\n}\\n' ;;
 esac
 echo '{"exit_code": 0}' > "$ev/status.json"
@@ -303,6 +304,7 @@ def test_eagle_n_flow_checks_the_host_and_copies_the_bundles(tmp_path):
     assert all("--kernel-cache " + str(assets / "kernel_cache_r18_tuned") in c for c in calls[1:])
     runs = sorted((tmp_path / "bench" / "vision" / f"{name}-baseline").glob("run-*"))
     assert len(runs) == 2 and all((r / "manifest.json").is_file() and (r / "evaluations").is_dir() for r in runs)
+    assert (runs[0].parent / "experiment.json").is_file()  # the table needs the experiment directory
     assert "run 2/2  completed/valid  (evidence " in ok.stdout and (tmp_path / "bench" / "tables" / f"{name}.metrics.csv").is_file()
     assert not (tmp_path / "MARK").exists()
     again = _run([name], {**env, "SUDO": str(tmp_path / "sudo-ok")})

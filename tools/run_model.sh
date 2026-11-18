@@ -322,7 +322,9 @@ eagle_n_runs() {  # name: validate in the container, REPS runs in the container 
       || { say "$name run $i/$REPS: launcher status not clean ($ev/status.json)"; return 1; }
     b=$(compgen -G "$ev/bundles/$exp/run-*" | head -1)
     [ -n "$b" ] || { say "$name run $i/$REPS: no run bundle in $ev/bundles/$exp"; return 1; }
-    mkdir -p "$R/vision/$exp" && cp -a "$b" "$R/vision/$exp/" || { say "$name: copy of $b failed"; return 1; }
+    mkdir -p "$R/vision/$exp" && cp -a "$b" "$R/vision/$exp/" \
+      && { [ -f "$R/vision/$exp/experiment.json" ] || cp -a "$ev/bundles/$exp/experiment.json" "$R/vision/$exp/"; } \
+      || { say "$name: copy of $b failed"; return 1; }
     say "$name run $i/$REPS  $(last_status)  (evidence $ev)"
   done
   evaluate_dirs "$name" "$CAT" "$R/vision/$exp"/run-*/
