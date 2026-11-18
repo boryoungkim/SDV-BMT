@@ -10,8 +10,6 @@ from tests._helpers import REPO_ROOT as ROOT
 def work_dut(workload):
     return {
         "deeplabv3plus-r18-cityscapes-v1-eagle-n": "eagle-n-r18.yaml",
-        "deeplabv3plus-r50-cityscapes-v1-eagle-n-bf16": "eagle-n-r50-bf16.yaml",
-        "deeplabv3plus-r101-cityscapes-v1-eagle-n-bf16": "eagle-n-r101-bf16.yaml",
     }[workload]
 
 
@@ -45,8 +43,6 @@ def test_eagle_n_native_describe_loads_real_executor():
     "workload",
     [
         "deeplabv3plus-r18-cityscapes-v1-eagle-n",
-        "deeplabv3plus-r50-cityscapes-v1-eagle-n-bf16",
-        "deeplabv3plus-r101-cityscapes-v1-eagle-n-bf16",
     ],
 )
 def test_native_model_qualification_matches_current_artifacts(workload):

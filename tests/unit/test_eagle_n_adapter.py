@@ -29,12 +29,8 @@ ROOT = REPO_ROOT
 EAGLE_N_ROOT = Path("/opt/sdv_assets/eagle_n")
 ASSETS = EAGLE_N_ROOT / "eagle_n_integration_assets"
 PORTING = EAGLE_N_ROOT / "eagle_n_porting"
-# Eagle-N configurations: name -> (variant, config tag, assets dir). BF16 plans only.
-CONFIGS = {
-    "r18": ("r18", "", "r18"),
-    "r50-bf16": ("r50", "-bf16", "r50_bf16"),
-    "r101-bf16": ("r101", "-bf16", "r101_bf16"),
-}
+# Eagle-N configurations: name -> (variant, config tag, assets dir). R-18 only, BF16 plan.
+CONFIGS = {"r18": ("r18", "", "r18")}
 ONNX = {
     "r18": PORTING / "deeplab_r18/models/deeplabv3plus_r18.onnx",
     "r50": PORTING / "deeplab_r50/models/deeplabv3plus_r50.onnx",
@@ -140,9 +136,7 @@ def test_one_executor_and_one_source_pin_for_every_model():
 def test_no_unqualified_or_legacy_eagle_n_configs():
     names = sorted(f.name for f in (ROOT / "configs").rglob("*eagle-n*"))
     assert not [n for n in names if any(k in n for k in ("bfp8w", "provisional", "asap-t60", ".yaml.in"))], names
-    for v in ("r50", "r101"):
-        assert not (ROOT / f"configs/duts/eagle-n-{v}.yaml").exists()
-        assert not (ROOT / f"configs/workloads/deeplabv3plus-{v}-cityscapes-v1-eagle-n.yaml").exists()
+    assert not [n for n in names if "r50" in n or "r101" in n], names  # Eagle-N is configured for R-18 only
     for f in (ROOT / "configs").rglob("*eagle-n*"):
         assert "fp32" not in f.read_text().lower().replace("fp32dst", ""), f
 
@@ -196,8 +190,7 @@ def test_configure_renders_the_committed_configs():
 
 def test_run_script_uses_the_committed_plans():
     s = (ROOT / "tools/eagle_n/run_eagle_n.sh").read_text()
-    for model in ("r18", "r50", "r101"):
-        assert f"  {model})" in s
+    assert "  r18)" in s and "r50" not in s and "r101" not in s
     assert "CAPTURE=$E/$ID-capture.yaml" in s and "BASELINE=$E/$ID-baseline.yaml" in s
     assert "provisional" not in s and "asap-t60" not in s and "/home/" not in s
 
@@ -211,7 +204,7 @@ def _synthetic(tmp_path, model="r18", source=None, receipt_overrides=None, quali
     build_record_path(executor).write_text(
         json.dumps({"schema": BUILD_RECORD_SCHEMA, "executor_sha256": _sha(executor), "executor_source_sha256": src})
     )
-    work = load_yaml_strict(_paths("r18" if model == "r18" else f"{model}-bf16")["workload"])
+    work = load_yaml_strict(_paths("r18")["workload"])
     plan = tmp_path / "plan.json"
     plan.write_text(
         json.dumps(
@@ -327,7 +320,7 @@ def test_workload_precision_must_match_plan_precision(tmp_path):
 
 
 def test_non_bf16_plan_is_refused(tmp_path):
-    dut, work = _synthetic(tmp_path, model="r50")
+    dut, work = _synthetic(tmp_path)
     plan = Path(work["options"]["device_program"]["plan"])
     plan.write_text(plan.read_text().replace('"bf16"', '"bfp8w"'))
     dp = work["options"]["device_program"]
@@ -355,8 +348,10 @@ def test_unqualified_trial_is_explicit_and_declares_jit(config):
     dut = EagleNDUT(parse_strict(DUTConfig, config))
     text = dut.measurement_declaration()["instrumentation"]["submit_semantics"]
     assert "DIAGNOSTIC UNQUALIFIED" in text and "JIT/allocation" in text
-    for name in ("r50-bf16", "r101-bf16"):
-        work = load_yaml_strict(_paths(name)["workload"])
+    for variant in ("r50", "r101"):
+        work = load_yaml_strict(_paths("r18")["workload"])
+        work["artifact_sha256"] = eagle.H04[variant]
+        work["options"]["device_program"]["variant"] = variant
         with pytest.raises(ValueError, match="restricted to R18"):
             dut.backend_spec(parse_strict(WorkloadSpec, work))
 

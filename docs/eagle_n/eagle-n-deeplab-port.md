@@ -13,8 +13,8 @@ evidence root on the reference host.
 | DUT | One BOS Eagle-N board, device 0 (`/dev/bos/0`). Config: `configs/duts/eagle-n-<model>[-bf16].yaml` |
 | Adapter | `bos_eagle_n`, class `EagleNDUT` (`src/sdv_bmt/dut/eagle_n/adapter.py`), a subclass of `NativeRealtimeAdapter` |
 | Native runner | `sdv-bmt-native-eagle-n` = `native/src/common/{loop,runner}.hpp` + `native/src/eagle_n/backend.hpp` + `native/src/main_eagle_n.cpp`; it needs no SDK and loads the executor at run time |
-| Executor | `libeagle_n_ttnn.so`, built from `native/src/eagle_n/ttnn_executor.cpp` against the BOS SDK (TT-Metal / TTNN) inside the pinned BOS container; loaded through a six-function C ABI (`executor_abi.hpp`). One executor serves the three models |
-| Models | DeepLabV3+ R-18, R-50 and R-101: the same ONNX files as the GPU workloads (`artifact_sha256` unchanged) |
+| Executor | `libeagle_n_ttnn.so`, built from `native/src/eagle_n/ttnn_executor.cpp` against the BOS SDK (TT-Metal / TTNN) inside the pinned BOS container; loaded through a six-function C ABI (`executor_abi.hpp`). One executor; the build record ties it to its source |
+| Models | DeepLabV3+ R-18: the same ONNX file as the GPU workload (`artifact_sha256` unchanged). R-50 and R-101 run on the GPU; the porting tools below still handle their plans, but no Eagle-N config is shipped for them |
 | Precision | BF16 activations and weights, FP32 accumulation (`bf16-conv-fp32dst`); the only precision accepted |
 | Graph | A manual TTNN C++ graph built from a plan exported offline (`tools/eagle_n/export_plan.py`). R-50 and R-101 use the tuned graph with layer4 and the head split into blocks whose shapes already ran on this NPU (`decompose_proven.py`) |
 | Workloads | `configs/workloads/deeplabv3plus-<model>-cityscapes-v1-eagle-n[-bf16].yaml` |

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate the Eagle-N configs from the assets and from the GPU configs of the same models.
 
-Per model (``r18``; ``r50`` and ``r101`` with BF16 plans, ids tagged ``-bf16``) it writes:
+For DeepLabV3+ R-18 (the only Eagle-N model configured) it writes:
 
 - ``configs/duts/eagle-n-<model><tag>.yaml``: the executor with its two pins, ``executor_sha256`` and
   ``executor_source_sha256`` (both from the build record ``<executor>.build.json``), the device lock and the host
@@ -39,11 +39,11 @@ EAGLE_N_ROOT = PurePosixPath("/opt/sdv_assets/eagle_n")
 ASSETS = "eagle_n_integration_assets"
 EXECUTOR = "libeagle_n_ttnn.so"
 # model -> (assets subdirectory, id tag)
-MODELS = {"r18": ("r18", ""), "r50": ("r50_bf16", "-bf16"), "r101": ("r101_bf16", "-bf16")}
+MODELS = {"r18": ("r18", "")}
 PRECISION = "bf16"
 # Host memory budgets (internal guards), one value for every BF16 plan: each staged item is the same 12 MiB input.
 BUDGETS = {"staging_budget_bytes": 6979321856, "prepare_host_budget_bytes": 7516192768}
-TRACE_REGION_BYTES = {"r18": 67108864, "r50": 268435456, "r101": 268435456}
+TRACE_REGION_BYTES = {"r18": 67108864}
 # One request timeout and drain for every Eagle-N plan, capture and baseline.
 REQUEST_TIMEOUT_NS = 60_000_000_000
 

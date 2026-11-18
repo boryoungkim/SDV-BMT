@@ -2,7 +2,7 @@
 # Eagle-N ladder L2-L5 through SDV-BMT for one model. See tools/eagle_n/README.md.
 #
 #   tools/eagle_n/run_eagle_n.sh MODEL LEVEL
-#     MODEL  r18 | r50 | r101
+#     MODEL  r18
 #     LEVEL  check  host checks only (no Docker, no device)
 #            l2     check + in-container describe and validate of the capture and baseline plans (no device)
 #            l3     check + validate + capture (asap) on the NPU + evaluate; mIoU must equal the receipt (L1)
@@ -30,8 +30,6 @@ WALL=${WALL_SECONDS:-6000}
 E=configs/experiments
 case "$MODEL" in
   r18)  ID=deeplabv3plus-r18-eagle-n;       KC=$A/kernel_cache_r18_tuned ;;
-  r50)  ID=deeplabv3plus-r50-eagle-n-bf16;  KC=$A/kernel_cache_r50_bf16 ;;
-  r101) ID=deeplabv3plus-r101-eagle-n-bf16; KC=$A/kernel_cache_r101_bf16 ;;
   *) sed -n '2,22p' "$0"; exit 2 ;;
 esac
 case "$LEVEL" in check|l2|l3|l4|l5) ;; *) sed -n '2,22p' "$0"; exit 2 ;; esac
