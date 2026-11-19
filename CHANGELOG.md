@@ -4,8 +4,26 @@ All notable changes to SDV-BMT are recorded here. Versions follow semantic versi
 
 ## [Unreleased]
 
+## [1.0.0] — 2026-11-19
+
+Twelve reference models on the GPU reference track and on three NPUs: five YOLOX detectors (COCO), three
+DeepLabV3+ segmenters (Cityscapes), CenterPoint-Pillars (nuScenes) and three Llama models (MMLU and synthetic speed
+inputs). Each model has a GPU path; the NPU ports are the Mobilint MLA400 (YOLOX), the BOS Eagle-N (DeepLabV3+ R-18)
+and the FuriosaAI RNGD (Llama). One command runs a model end to end and writes its metric table. GPU results are
+reference-accelerator results; NPU results are not published in this repository.
+
 ### Added
 
+- **Mobilint MLA400 port of the YOLOX workloads.** The five YOLOX detectors run on one ARIES chip in single-core mode
+  through the native measurement plane (qbruntime C++), with the same workload contract as the GPU reference: input
+  tensor, raw output, shared decode / NMS / codec and COCO evaluation. Tools and documentation in `tools/mobilint/` and
+  `docs/mobilint/`.
+- **BOS Eagle-N port of DeepLabV3+ R-18.** A TTNN executor built against the BOS SDK in a pinned container, loaded
+  by the native runner through a small C ABI. The DUT config pins the executor and its source, the workload pins the
+  BF16 plan, the weights and a qualification receipt that is written only from complete L1 evidence on the NPU
+  (accuracy criterion: L1 NPU mIoU at most 0.01 below the GPU FP32 mIoU). The R-18 Eagle-N baseline replays its own
+  rate, chosen with the GPU family rule. Tools and documentation in `tools/eagle_n/` and `docs/eagle_n/`.
+  `tools/run_model.sh deeplabv3plus-r18-eagle-n` runs it through the BOS container launcher.
 - **3D detection (LiDAR): CenterPoint-Pillars**, the mmdetection3d nuScenes checkpoint (pillar 0.2 m, circle NMS).
   New workload `centerpoint_nuscenes` (input contract `nuscenes-pillar02-p40000/1`): the 10-sweep point cloud and the
   voxelization are built offline (pillar tensor payloads), the device runs pillar features, BEV scatter, backbone,
