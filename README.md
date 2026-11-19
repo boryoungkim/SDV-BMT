@@ -6,14 +6,17 @@ SDV-BMT runs one model workload on an accelerator (the device under test, DUT) u
 schedule and records **evidence**: what was planned, what was actually realized, and exactly how each number
 was measured. Metrics are computed afterwards from that evidence alone.
 
-The long-term targets are automotive NPUs. Version 0.1 validates the measurement system on an NVIDIA GPU, the
-first *reference accelerator*: v0.1.0 with YOLOX-S, v0.1.2 with eight reference models (five YOLOX detectors on
-COCO, three DeepLabV3+ segmenters on Cityscapes). GPU results are not NPU results, are not a GPU ranking, and predict nothing about
-NPU timing.
+The targets are automotive NPUs. Version 1.0 runs twelve reference models with datasets: five YOLOX detectors
+(COCO), three DeepLabV3+ segmenters (Cityscapes), CenterPoint-Pillars (nuScenes LiDAR) and three Llama models
+(MMLU and synthetic speed inputs). Every model runs on an NVIDIA GPU, the *reference accelerator*, and the NPU ports
+run the YOLOX detectors on a Mobilint MLA400, DeepLabV3+ R-18 on a BOS Eagle-N and the Llama models on a FuriosaAI
+RNGD card ([NPU ports](#npu-ports)). One command runs a model end to end and writes its metric table
+([Running a model](#running-a-model-one-command)). GPU results are not NPU results, are not a GPU ranking, and
+predict nothing about NPU timing. NPU results of the MLA400 and the Eagle-N are not published in this repository.
 
-Since v0.1.2 the `main` branch also has, not yet released: a ninth reference model, CenterPoint-Pillars (3D
-detection on nuScenes LiDAR), together with *run series* for evaluation sets too large for one run, and a separate
-LLM path that runs Llama 3 on the GPU and on a FuriosaAI RNGD card ([LLM benchmark](#llm-benchmark-unreleased)).
+Version history: v0.1.0 validated the measurement system with YOLOX-S on the GPU, v0.1.2 extended it to eight GPU
+models, and v1.0 adds CenterPoint-Pillars with *run series* for evaluation sets too large for one run, the LLM path
+([LLM benchmark](#llm-benchmark)) and the three NPU ports.
 
 ## Research question
 
@@ -32,7 +35,8 @@ Python control plane            plan loading, strict validation, preflight, iden
         │  resolved run specification (phase protocol, one native process per run)
         ▼
 C++ native measurement plane    realtime issuer, admission (N=1, queue 0, drop_new), timeouts,
-                                host-clock timestamps, DUT backend (fake or NVIDIA)  →  facts only
+                                host-clock timestamps, DUT backend (fake, NVIDIA, Mobilint MLA400,
+                                BOS Eagle-N)  →  facts only
         │  append-only evidence bundle: events, outputs, input items, manifest, realization evidence
         ▼
 Python evaluation plane         Model-level Metric Set v1.1, task quality, Design / Realization /
@@ -42,8 +46,11 @@ Python evaluation plane         Model-level Metric Set v1.1, task quality, Desig
 - **C++ records facts; Python computes meaning.** The native runner computes no metric; percentiles,
   deadlines, task quality and statistics are evaluated in Python from the bundle only.
 - No Python runs in the per-request measured path; the native issuer spins on the host monotonic clock.
-- Portable semantics are kept apart from vendor observation: CUDA, cuDNN, NVML and NVTX appear only in
-  `native/src/nvidia/`, `src/sdv_bmt/dut/nvidia/` and namespaced evidence keys (`nvidia.*`).
+- Portable semantics are kept apart from vendor observation: each vendor runtime appears only in its own
+  directories (`native/src/{nvidia,mobilint,eagle_n}/`, `src/sdv_bmt/dut/{nvidia,mobilint,eagle_n}/`) and in
+  namespaced evidence keys (for example `nvidia.*`, `eagle_n.*`).
+- The LLM path is a separate Python measurement plane with its own bundle format and catalog
+  ([LLM benchmark](#llm-benchmark)).
 - Timeouts follow the Stage 1A semantics on real time: events are decided in the order of their semantic
   timestamps (arrival `t_sched`, timeout `t_submit_begin + request_timeout_ns`, completion `t_complete`); the tie
   order completion → timeout → arrival applies only to equal timestamps; a timed-out request keeps the slot until
@@ -54,7 +61,7 @@ Python evaluation plane         Model-level Metric Set v1.1, task quality, Desig
 Catalog `sdv-bmt-model-metric-set-v1.1` (default since v0.1.2): the 91 metrics of Metric Set v1
 (`sdv-bmt-model-metric-set-v1`, still selectable) plus two segmentation-quality metrics, computed by
 `sdv-bmt evaluate` from a bundle. Every result carries its layer and its population (planned / completed /
-sample count, coverage). Metric Set v1.2 (`sdv-bmt-model-metric-set-v1.2`, unreleased, selected with `--catalog`)
+sample count, coverage). Metric Set v1.2 (`sdv-bmt-model-metric-set-v1.2`, selected with `--catalog`)
 is v1.1 plus eight nuScenes 3D-detection metrics; the default stays v1.1.
 
 | layer | metrics (examples) |
@@ -80,7 +87,7 @@ diagnostic, not accuracy. Definitions: [`docs/metrics_catalog.md`](docs/metrics_
   measurement boundary and one realization-evidence record per realized condition (`observed`,
   `self_reported`, `virtual`, `not_observable`, `not_applicable`).
 - Evaluation never modifies raw files and writes a new `evaluations/<eval_id>/`.
-- A *run series* (unreleased) runs one dataset selection as consecutive ordinary runs (parts). A part never splits
+- A *run series* runs one dataset selection as consecutive ordinary runs (parts). A part never splits
   a block of items that share the same metadata value (for nuScenes, a scene), and `series.json` records the parts.
   `sdv-bmt evaluate SERIES_DIR` checks that the parts differ only in their selection and produces one result:
   counts summed, distributions over all requests, rates over the sum of the parts' measurement windows, task
@@ -95,7 +102,7 @@ diagnostic, not accuracy. Definitions: [`docs/metrics_catalog.md`](docs/metrics_
 Details: [`docs/architecture.md`](docs/architecture.md), [`docs/measurement_protocol.md`](docs/measurement_protocol.md),
 [`docs/evidence.md`](docs/evidence.md) (Korean).
 
-## Reference implementation (v0.1.2, plus unreleased additions on `main`)
+## Reference implementation (v1.0)
 
 | part | status |
 |---|---|
@@ -103,14 +110,31 @@ Details: [`docs/architecture.md`](docs/architecture.md), [`docs/measurement_prot
 | realtime harness, fake native backend | MOCK; harness-floor and conformance tests |
 | NVIDIA backend | ACTUAL on one reference GPU (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition): CUDA 13.0 (headers, NVRTC, driver API, NVML), cuDNN 9.1 plan executor with a pinned algorithm table, CUDA event brackets, optional Nsight Systems cross-check |
 | detection workloads | YOLOX-Tiny (416 × 416), S, M, L, X (official ONNX, converted offline to cuDNN plans) on the first 1,000 COCO val2017 images; COCO bbox quality |
-| segmentation workloads (v0.1.2) | DeepLabV3+ R-18, R-50, R-101 (mmsegmentation Cityscapes checkpoints, exported to ONNX and converted offline to cuDNN plans) on the 500 Cityscapes val images at 2048 × 1024; Cityscapes 19-class mIoU |
-| 3D detection workload (unreleased) | CenterPoint-Pillars (mmdetection3d nuScenes checkpoint, pillar 0.2 m, circle NMS; exported to ONNX and converted offline to a cuDNN plan) on nuScenes LiDAR: the 162 samples of the four official-val scenes in v1.0-mini, and all 6,019 val samples as a run series; nuScenes mAP / NDS. The 10-sweep point cloud and the pillar voxelization are built offline, outside the measured path |
-| all workloads | FP32, batch 1, N = 1 |
+| segmentation workloads | DeepLabV3+ R-18, R-50, R-101 (mmsegmentation Cityscapes checkpoints, exported to ONNX and converted offline to cuDNN plans) on the 500 Cityscapes val images at 2048 × 1024; Cityscapes 19-class mIoU |
+| 3D detection workload | CenterPoint-Pillars (mmdetection3d nuScenes checkpoint, pillar 0.2 m, circle NMS; exported to ONNX and converted offline to a cuDNN plan) on nuScenes LiDAR: the 162 samples of the four official-val scenes in v1.0-mini, and all 6,019 val samples as a run series; nuScenes mAP / NDS. The 10-sweep point cloud and the pillar voxelization are built offline, outside the measured path |
+| Mobilint MLA400 backend (NPU) | ACTUAL: the five YOLOX detectors, int8 compiled models (`.mxq`), one ARIES chip in single-core mode, qbruntime C++ ([`docs/mobilint/mla400-yolox-port.md`](docs/mobilint/mla400-yolox-port.md)) |
+| BOS Eagle-N backend (NPU) | ACTUAL: DeepLabV3+ R-18, BF16 plan, a TTNN executor built against the BOS SDK in a pinned container; the executor is pinned with its source, and a qualification receipt gates every benchmark run ([`docs/eagle_n/eagle-n-deeplab-port.md`](docs/eagle_n/eagle-n-deeplab-port.md)) |
+| LLM path | Llama 3.2 1B / 3B Instruct and Llama 3.1 8B Instruct on the GPU (vLLM) and on a FuriosaAI RNGD card (furiosa-llm) ([LLM benchmark](#llm-benchmark)) |
+| all CNN / LiDAR workloads | batch 1, N = 1; FP32 on the GPU, int8 on the MLA400, BF16 on the Eagle-N |
 
 Before a run starts, the runner rejects a plan whose fixed-rate deadline does not follow its rate, an input whose
 preprocessing contract differs from the workload's, a native runner not built from the current native sources, a
 cuDNN plan that reads or writes outside its buffers or leaves part of the task output unwritten, and a misaligned
 timing offset.
+
+## Running a model (one command)
+
+```bash
+tools/run_model.sh list                       # the model names
+tools/run_model.sh yolox-s --dry-run          # what would run (no device, nothing written)
+REPS=1 R=runs/bench tools/run_model.sh yolox-s
+```
+
+One command validates the plan, runs `REPS` timed runs, evaluates them and writes the model's metric table
+`$R/tables/<model>.metrics.csv` ([`docs/metric_table.md`](docs/metric_table.md)); the four representative metrics
+are printed as a table. `tools/show_metrics.py` prints a metric table in a readable form. A name without a device
+suffix runs on the GPU; `-mla400`, `-eagle-n` and `-rngd` select the NPU of that host (`yolox-*-mla400`,
+`deeplabv3plus-r18-eagle-n`, `llama-*-rngd`). The script's header lists what each device needs.
 
 ## Quick start (no GPU needed)
 
@@ -175,7 +199,7 @@ make -C native
 The input specs pin the subset index by SHA-256. It was built with Pillow 11.1.0 / libjpeg-turbo 3.1.0; another
 JPEG decoder can produce different pixels and therefore a different digest, which the run rejects.
 
-### Other v0.1.2 models
+### Other GPU models
 
 - **YOLOX-Tiny, M, L, X**: download `yolox_{tiny,m,l,x}.onnx` from the same YOLOX release (sizes and SHA-256 in
   [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) and `configs/workloads/yolox-*-coco-v1.yaml`), convert each
@@ -189,7 +213,7 @@ JPEG decoder can produce different pixels and therefore a different digest, whic
   build the val input with `tools/deeplab_family/build_cityscapes_val.py`. Then run
   `configs/experiments/deeplabv3plus-<model>-baseline.yaml` (2 Hz). Each tool's module docstring gives its exact
   command line.
-- **CenterPoint-Pillars (unreleased)**: download the mmdetection3d checkpoint
+- **CenterPoint-Pillars**: download the mmdetection3d checkpoint
   `centerpoint_02pillar_second_secfpn_circlenms_4x8_cyclic_20e_nus_20220811_031844-191a3822.pth` (24,154,629 bytes,
   SHA-256 `191a38226d2ce990f26cc3f78c454310cc562d81d29e86d8ca8fa39c0a44215d`) from
   `https://download.openmmlab.com/mmdetection3d/v1.0.0_models/centerpoint/centerpoint_02pillar_second_secfpn_circlenms_4x8_cyclic_20e_nus/`.
@@ -242,7 +266,7 @@ measured on one day, so these YOLOX-S timings are not compared with the v0.1.0 r
 ONNX Runtime and the official implementations, the replay-rate rule, operating records and limitations:
 [`docs/results/v0.1.2-gpu-reference-result.md`](docs/results/v0.1.2-gpu-reference-result.md).
 
-## CenterPoint-Pillars (unreleased)
+## CenterPoint-Pillars
 
 Same GPU, FP32, batch 1, N = 1, fixed rate 20 Hz (the LiDAR sweep rate), deadline 50 ms. The measured path runs from
 the pillar input to the decoded 3D detections; the 10-sweep merge and the voxelization are built offline.
@@ -261,7 +285,21 @@ draws nine of the ten sweeps at random, which SDV-BMT fixes to the nine nearest.
 rule, the run-series details and limitations:
 [`docs/results/centerpoint-pillars-gpu-reference-result.md`](docs/results/centerpoint-pillars-gpu-reference-result.md).
 
-## LLM benchmark (unreleased)
+## NPU ports
+
+| NPU | models | how it runs | reproduction |
+|---|---|---|---|
+| Mobilint MLA400 (ARIES) | YOLOX-Tiny, S, M, L, X | int8 compiled models on one chip in single-core mode, native measurement plane (qbruntime C++) | [`tools/mobilint/README.md`](tools/mobilint/README.md) |
+| BOS Eagle-N | DeepLabV3+ R-18 | BF16 plan on a TTNN executor in a pinned BOS container, native measurement plane; the baseline replays its own rate (`BASELINE_RATE_HZ` in `tools/eagle_n/configure.py`) | [`tools/eagle_n/README.md`](tools/eagle_n/README.md) |
+| FuriosaAI RNGD | Llama 3.2 1B / 3B, Llama 3.1 8B Instruct | furiosa-llm, LLM measurement plane | [`docs/llm_benchmark.md`](docs/llm_benchmark.md) |
+
+Each port uses the same workload contract, dataset and evaluation as the GPU path of the model; only the model
+execution differs. The MLA400 and Eagle-N results are not published here: the Mobilint SDK license forbids publishing
+results without Mobilint's written consent, and the Eagle-N follows the same rule until BOS's conditions are
+confirmed. DeepLabV3+ R-50 and R-101 run on the GPU only. The NPU adapters and their DUT options are experimental and
+may change within 1.x together with the vendor SDKs.
+
+## LLM benchmark
 
 A separate Python measurement plane runs Llama 3.2 1B / 3B Instruct and Llama 3.1 8B Instruct on the GPU with vLLM
 and on a FuriosaAI RNGD card with furiosa-llm. The command is `python -m sdv_bmt.llm`. It uses its own bundle
@@ -274,8 +312,8 @@ chip. Measurement definitions and reproduction: [`docs/llm_benchmark.md`](docs/l
 
 | path | content |
 |---|---|
-| `src/sdv_bmt/` | Python core: contracts, input providers, workloads, DUT adapters, runner, evidence, metrics, CLI |
-| `native/` | C++ native measurement plane (`src/common`, `src/fake`, `src/nvidia`) and its unit tests |
+| `src/sdv_bmt/` | Python core: contracts, input providers, workloads, DUT adapters, runner, evidence, metrics, CLI; `llm/` the LLM path |
+| `native/` | C++ native measurement plane (`src/common`, `src/fake`, `src/nvidia`, `src/mobilint`, `src/eagle_n`) and its unit tests |
 | `configs/` | experiment plans, inputs, workloads, DUT configs, stress specs, output references, small fixtures |
 | `tests/` | unit, conformance, golden, architecture, e2e, native and device tests |
 | `tools/` | offline asset preparation, cross-checks and analysis (outside the core's code identity) |
@@ -284,18 +322,22 @@ chip. Measurement definitions and reproduction: [`docs/llm_benchmark.md`](docs/l
 
 ## Roadmap
 
-v0.1.0 covers the deterministic core, the native realtime harness, the NVIDIA GPU reference backend, the real
-YOLOX-S / COCO baseline and Model-level Metric Set v1. v0.1.2 adds the YOLOX family, DeepLabV3+ segmentation on
-Cityscapes and Metric Set v1.1 on the same GPU reference track. After v0.1.2, `main` adds (unreleased)
-CenterPoint-Pillars on nuScenes LiDAR with run series and Metric Set v1.2, and the LLM path (Llama 3 on the GPU with
-vLLM and on a FuriosaAI RNGD card with furiosa-llm; whole-system results). Planned next, each behind its own review gate: NPU SDK
-and observability investigation (Stage 2a-N), NPU realtime harness (1R-N) and NPU baseline (2b-N); later the
+v0.1.0 covered the deterministic core, the native realtime harness, the NVIDIA GPU reference backend, the real
+YOLOX-S / COCO baseline and Model-level Metric Set v1. v0.1.2 added the YOLOX family, DeepLabV3+ segmentation on
+Cityscapes and Metric Set v1.1. v1.0 adds CenterPoint-Pillars with run series and Metric Set v1.2, the LLM path, the
+NPU ports (Mobilint MLA400, BOS Eagle-N, FuriosaAI RNGD), the metric table and one-command runs. Planned next, each
+behind its own review gate: 1.1 measurement extensions for result attribution (planned earlier as "v0.2"), then the
 Driving Scenario stage, hardware stress, and the Scenario × Stress matrix.
 
-Not in v0.1.x: NPU integration, driving scenarios, stress sweeps, system-level (Autoware) evaluation, WCET or
-FTTI claims, functional-safety compliance claims, calibration, energy per inference, DRAM bandwidth, AI error
-rates per hour or km, TTC / PET / DST, SPFM / LFM / PMHF / FIT.
+Within 1.x the commands `validate`, `run` and `evaluate` with their exit codes, the configuration file formats
+(fields are only added), the evidence bundle format, the metric definitions of Metric Set v1, v1.1 and v1.2, and the
+metric table columns are kept; a change that breaks them is 2.0. The NPU adapters, the LLM path and the tools are
+experimental and may change within 1.x.
+
+Not in v1.0: driving scenarios, stress sweeps, system-level (Autoware) evaluation, WCET or FTTI claims,
+functional-safety compliance claims, calibration, energy per inference, DRAM bandwidth, AI error rates per hour or
+km, TTC / PET / DST, SPFM / LFM / PMHF / FIT.
 
 ![SDV-BMT development roadmap: Stage 0 to Stage 6 and Phase 2](docs/Dev_roadmap.png)
 
-*Stages 0 and 1A are complete; 2a, 1R and 2b were carried out on the NVIDIA GPU reference track in v0.1.0 and extended to eight models in v0.1.2; the NPU track (2a-N, 1R-N, 2b-N) is next.*
+*Stages 0 and 1A are complete; 2a, 1R and 2b were carried out on the NVIDIA GPU reference track in v0.1.0 and v0.1.2 and on three NPUs in v1.0; the measurement extensions (1.1) and the Driving Scenario stage are next.*
