@@ -2,21 +2,14 @@
 
 ## What SDV-BMT is
 
-SDV-BMT runs one model workload on an accelerator (the device under test, DUT) under a planned request
-schedule and records **evidence**: what was planned, what was actually realized, and exactly how each number
-was measured. Metrics are computed afterwards from that evidence alone.
+SDV-BMT is a benchmark for AI accelerators at the level of one model workload. It runs a model on a device under
+test (DUT) under a planned request schedule and records **evidence**: what was planned, what was actually
+realized, and exactly how each number was measured. Metrics are computed afterwards from that evidence alone.
 
-The targets are automotive NPUs. Version 1.0 runs twelve reference models with datasets: five YOLOX detectors
-(COCO), three DeepLabV3+ segmenters (Cityscapes), CenterPoint-Pillars (nuScenes LiDAR) and three Llama models
-(MMLU and synthetic speed inputs). Every model runs on an NVIDIA GPU, the *reference accelerator*, and the NPU ports
-run the YOLOX detectors on a Mobilint MLA400, DeepLabV3+ R-18 on a BOS Eagle-N and the Llama models on a FuriosaAI
-RNGD card ([NPU ports](#npu-ports)). One command runs a model end to end and writes its metric table
-([Running a model](#running-a-model-one-command)). GPU results are not NPU results, are not a GPU ranking, and
-predict nothing about NPU timing. NPU results of the MLA400 and the Eagle-N are not published in this repository.
-
-Version history: v0.1.0 validated the measurement system with YOLOX-S on the GPU, v0.1.2 extended it to eight GPU
-models, and v1.0 adds CenterPoint-Pillars with *run series* for evaluation sets too large for one run, the LLM path
-([LLM benchmark](#llm-benchmark)) and the three NPU ports.
+Most benchmarks report a number. SDV-BMT reports a number together with the conditions it was measured under,
+whether those conditions were actually met, and whether a difference between two runs may be attributed to a
+cause. It was designed with software-defined-vehicle (SDV) perception and language workloads in mind, but the
+core is device- and vendor-neutral.
 
 ## Research question
 
@@ -28,53 +21,78 @@ The guiding rules: *Control what is planned. Verify what is realized. Localize w
 beyond the evidence.* — *No attributed delta without validated factor isolation.* — *A configured condition and a
 realized condition are not assumed to be identical.*
 
+## Key features
+
+| feature | what it gives you |
+|---|---|
+| **Planned vs. realized** | Every condition in the plan (rate, affinity, device settings, inputs) is checked against what actually happened, and each check is recorded as `observed`, `self_reported`, `virtual`, `not_observable` or `not_applicable`. A condition that could not be observed is never treated as met. |
+| **Evidence first, metrics later** | A run writes an append-only, hash-sealed evidence bundle. Metrics are recomputed from the bundle at any time, with any supported catalog, without touching the raw data. |
+| **Low-overhead native measurement** | A C++ measurement plane issues requests in real time on the host monotonic clock; no Python runs in the per-request measured path. Its own overhead (issue lag, harness floor) is measured and reported. |
+| **Clear measurement boundaries** | Request completion, DUT service, output ready and the device execution bracket are separate metrics with separate definitions, so host-side and device-side time are never mixed. |
+| **Performance, timeliness and quality together** | One run yields latency distributions, deadline misses, achieved rates and task quality (detection AP, segmentation mIoU, 3D-detection mAP / NDS), each with its population and coverage. |
+| **Honest statistics** | Nearest-rank percentiles, a minimum sample count per percentile, censoring of dropped or timed-out requests, and no number for an invalid result. |
+| **Attributable A/B comparison** | Three guards (Design, Realization, Measurement) decide whether the difference between two runs may be attributed to the one factor that was changed. |
+| **Strict preflight** | Inconsistent plans, mismatched preprocessing, stale native builds, unpinned or modified model files and inputs are rejected before the run starts. |
+| **Reproducible by construction** | Models, weights, inputs and executors are pinned by SHA-256; outputs can be checked byte for byte against a golden capture. |
+| **Pluggable devices** | Each device backend lives in its own directory behind a portable contract; device-specific observations use namespaced evidence keys and never leak into the portable metrics. |
+| **One command per model** | One command validates, runs, evaluates and writes a metric table for a model. |
+
 ## Architecture
 
 ```text
 Python control plane            plan loading, strict validation, preflight, identities
         │  resolved run specification (phase protocol, one native process per run)
         ▼
-C++ native measurement plane    realtime issuer, admission (N=1, queue 0, drop_new), timeouts,
-                                host-clock timestamps, DUT backend (fake, NVIDIA, Mobilint MLA400,
-                                BOS Eagle-N)  →  facts only
+C++ native measurement plane    realtime issuer, admission control, timeouts,
+                                host-clock timestamps, DUT backends (fake, NVIDIA GPU
+                                reference, NPU backends)  →  facts only
         │  append-only evidence bundle: events, outputs, input items, manifest, realization evidence
         ▼
-Python evaluation plane         Model-level Metric Set v1.1, task quality, Design / Realization /
+Python evaluation plane         Model-level Metric Set, task quality, Design / Realization /
                                 Measurement Guards, analysis tools
 ```
 
 - **C++ records facts; Python computes meaning.** The native runner computes no metric; percentiles,
   deadlines, task quality and statistics are evaluated in Python from the bundle only.
-- No Python runs in the per-request measured path; the native issuer spins on the host monotonic clock.
-- Portable semantics are kept apart from vendor observation: each vendor runtime appears only in its own
-  directories (`native/src/{nvidia,mobilint,eagle_n}/`, `src/sdv_bmt/dut/{nvidia,mobilint,eagle_n}/`) and in
-  namespaced evidence keys (for example `nvidia.*`, `eagle_n.*`).
-- The LLM path is a separate Python measurement plane with its own bundle format and catalog
+- **Portable semantics are kept apart from device observation.** Each backend appears only in its own
+  directories (`native/src/<backend>/`, `src/sdv_bmt/dut/<backend>/`) and in its own namespaced evidence keys.
+  A deterministic fake backend with a virtual clock ships with the core for testing without hardware.
+- **Request admission is explicit**: in-flight limit, queue capacity and the policy when full (for example
+  N = 1, queue 0, `drop_new`) are part of the plan and of the evidence.
+- **Timeouts are decided on real time**: events are ordered by their semantic timestamps (arrival, timeout,
+  completion); a timed-out request keeps its slot until its late completion.
+- **LLM workloads** use a separate Python measurement plane with its own bundle format and catalog
   ([LLM benchmark](#llm-benchmark)).
-- Timeouts follow the Stage 1A semantics on real time: events are decided in the order of their semantic
-  timestamps (arrival `t_sched`, timeout `t_submit_begin + request_timeout_ns`, completion `t_complete`); the tie
-  order completion → timeout → arrival applies only to equal timestamps; a timed-out request keeps the slot until
-  its late completion.
 
-## Model-level Metric Set v1.1
+## Request schedules
 
-Catalog `sdv-bmt-model-metric-set-v1.1` (default since v0.1.2): the 91 metrics of Metric Set v1
-(`sdv-bmt-model-metric-set-v1`, still selectable) plus two segmentation-quality metrics, computed by
-`sdv-bmt evaluate` from a bundle. Every result carries its layer and its population (planned / completed /
-sample count, coverage). Metric Set v1.2 (`sdv-bmt-model-metric-set-v1.2`, selected with `--catalog`)
-is v1.1 plus eight nuScenes 3D-detection metrics; the default stays v1.1.
+| mode | use |
+|---|---|
+| `fixed_rate` | offer requests at a set rate (for example a camera or LiDAR frame rate) and check deadlines against it |
+| `asap` | issue the next request as soon as the previous one completes, to find closed-loop throughput |
+| `recorded` | replay the timestamps of a recorded scenario, optionally at another speed |
+
+A *run series* runs one dataset selection that is too large for a single run as consecutive ordinary runs (parts).
+A part never splits a block of items that share a metadata value (for example a driving scene); the series is
+evaluated as one result and is valid only if every part is valid.
+
+## Model-level Metric Set
+
+Catalog `sdv-bmt-model-metric-set-v1.1` (default): 93 metrics computed by `sdv-bmt evaluate` from a bundle.
+`sdv-bmt-model-metric-set-v1.2` adds eight 3D-detection metrics. Every result carries its layer and its
+population (planned / completed / sample count, coverage).
 
 | layer | metrics (examples) |
 |---|---|
 | performance | `bmt.request_completion.*`, `bmt.dut_service.*`, `bmt.output_ready.*` (p50 / p90 / p99 / `max_observed`), `bmt.offered_rate`, `bmt.achieved_completion_rate`, `bmt.closed_loop_completion_rate`, state counts and rates |
 | timeliness | `bmt.deadline.{completion,output_ready}_miss_{count,rate}`, `bmt.required_rate`, `bmt.required_rate_met` |
-| task quality | detection: `quality.detection.coverage`, `quality.detection.conditional.{ap, ap50, ap75, ap_small, ap_medium, ap_large, ar1, ar10, ar100, precision, recall, f1, tp_count, fp_count, fn_count, fp_per_image, fn_per_gt}`; segmentation (v1.1): `quality.segmentation.coverage`, `quality.segmentation.conditional.miou`; 3D detection (v1.2): `quality.det3d.coverage`, `quality.det3d.conditional.{map, nds, mate, mase, maoe, mave, maae}` |
+| task quality | detection: `quality.detection.conditional.{ap, ap50, ap75, …, precision, recall, f1}`; segmentation: `quality.segmentation.conditional.miou`; 3D detection: `quality.det3d.conditional.{map, nds, …}` — each with its coverage |
 | diagnostics | `bmt.issue_lag.*`, `bmt.submit.*`, `bmt.post_submit.*`, `bmt.output_stage.*`, `bmt.h2d.*`, `bmt.device_execution_bracket.*`, `bmt.d2h.*`, `bmt.output.identity_rate` |
 | validity / evidence | `data.item_count`, `data.annotation_coverage`, `data.integrity.*_verified_rate`, `data.traceability.complete` |
 
 Rules: nearest-rank percentiles; a p99 needs at least 100 samples, otherwise `invalid(insufficient_samples)`;
 planned percentiles count non-completed requests as +∞ and are `censored` (report-only) when the rank lands
-there; a non-valid result never carries a number; DUT-service is not device execution time and the device
+there; a non-valid result never carries a number; DUT service is not device execution time and the device
 execution bracket is not device busy time; deadlines are evaluation parameters, not FTTI; task quality is
 *conditional* on completed outputs and always reported with its coverage; output identity is a determinism
 diagnostic, not accuracy. Definitions: [`docs/metrics_catalog.md`](docs/metrics_catalog.md) §8–9 (Korean).
@@ -84,15 +102,8 @@ diagnostic, not accuracy. Definitions: [`docs/metrics_catalog.md`](docs/metrics_
 - A run writes an append-only bundle: `run_spec.json`, `input_items.jsonl`, `events.jsonl`, `stress.jsonl`,
   `outputs.bin`, and — when the workload declares a task-quality evaluator — `quality_reference.jsonl` with the
   frozen ground truth; `manifest.json` (written last) records every raw file's SHA-256, the identities, the
-  measurement boundary and one realization-evidence record per realized condition (`observed`,
-  `self_reported`, `virtual`, `not_observable`, `not_applicable`).
+  measurement boundary and one realization-evidence record per realized condition.
 - Evaluation never modifies raw files and writes a new `evaluations/<eval_id>/`.
-- A *run series* runs one dataset selection as consecutive ordinary runs (parts). A part never splits
-  a block of items that share the same metadata value (for nuScenes, a scene), and `series.json` records the parts.
-  `sdv-bmt evaluate SERIES_DIR` checks that the parts differ only in their selection and produces one result:
-  counts summed, distributions over all requests, rates over the sum of the parts' measurement windows, task
-  quality evaluated once over all items. The series is valid only if every part is valid. A series takes no output
-  reference and one repetition.
 - `evaluate_contrast_validity` checks a pair of runs with three guards: **Design** (only the intended factor
   varied), **Realization** (the fixed conditions were realized equivalently, as far as observed), and
   **Measurement** (same boundary, catalog, protocol and evaluator). Missing evidence is never equivalence; a
@@ -102,25 +113,100 @@ diagnostic, not accuracy. Definitions: [`docs/metrics_catalog.md`](docs/metrics_
 Details: [`docs/architecture.md`](docs/architecture.md), [`docs/measurement_protocol.md`](docs/measurement_protocol.md),
 [`docs/evidence.md`](docs/evidence.md) (Korean).
 
-## Reference implementation (v1.0)
+## Reference workloads
 
-| part | status |
+| task | models | data | quality |
+|---|---|---|---|
+| 2D detection | YOLOX-Tiny, S, M, L, X | COCO val2017, first 1,000 images | COCO bbox AP |
+| semantic segmentation | DeepLabV3+ R-18, R-50, R-101 | Cityscapes val, 500 images at 2048 × 1024 | 19-class mIoU |
+| 3D detection (LiDAR) | CenterPoint-Pillars | nuScenes: 162 mini-val samples, or all 6,019 val samples as a run series | nuScenes mAP / NDS |
+| language | Llama 3.2 1B / 3B Instruct, Llama 3.1 8B Instruct | MMLU and synthetic speed inputs | MMLU accuracy |
+
+Each workload has a fixed contract (preprocessing, input and output layout, evaluator) shared by every device
+backend, so only the model execution differs between devices. Preprocessing that is not part of the measured path
+(for example LiDAR sweep merging and voxelization) is done offline and pinned.
+
+## GPU reference baseline
+
+Every reference workload runs on an NVIDIA GPU, the *reference accelerator*. GPU results validate the
+measurement system; they are not a GPU ranking and predict nothing about other accelerators.
+
+| part | setup |
 |---|---|
-| deterministic core (virtual clock, FakeDUT) | MOCK; golden regression cases G-1..G-5 |
-| realtime harness, fake native backend | MOCK; harness-floor and conformance tests |
-| NVIDIA backend | ACTUAL on one reference GPU (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition): CUDA 13.0 (headers, NVRTC, driver API, NVML), cuDNN 9.1 plan executor with a pinned algorithm table, CUDA event brackets, optional Nsight Systems cross-check |
-| detection workloads | YOLOX-Tiny (416 × 416), S, M, L, X (official ONNX, converted offline to cuDNN plans) on the first 1,000 COCO val2017 images; COCO bbox quality |
-| segmentation workloads | DeepLabV3+ R-18, R-50, R-101 (mmsegmentation Cityscapes checkpoints, exported to ONNX and converted offline to cuDNN plans) on the 500 Cityscapes val images at 2048 × 1024; Cityscapes 19-class mIoU |
-| 3D detection workload | CenterPoint-Pillars (mmdetection3d nuScenes checkpoint, pillar 0.2 m, circle NMS; exported to ONNX and converted offline to a cuDNN plan) on nuScenes LiDAR: the 162 samples of the four official-val scenes in v1.0-mini, and all 6,019 val samples as a run series; nuScenes mAP / NDS. The 10-sweep point cloud and the pillar voxelization are built offline, outside the measured path |
-| Mobilint MLA400 backend (NPU) | ACTUAL: the five YOLOX detectors, int8 compiled models (`.mxq`), one ARIES chip in single-core mode, qbruntime C++ ([`docs/mobilint/mla400-yolox-port.md`](docs/mobilint/mla400-yolox-port.md)) |
-| BOS Eagle-N backend (NPU) | ACTUAL: DeepLabV3+ R-18, BF16 plan, a TTNN executor built against the BOS SDK in a pinned container; the executor is pinned with its source, and a qualification receipt gates every benchmark run ([`docs/eagle_n/eagle-n-deeplab-port.md`](docs/eagle_n/eagle-n-deeplab-port.md)) |
-| LLM path | Llama 3.2 1B / 3B Instruct and Llama 3.1 8B Instruct on the GPU (vLLM) and on a FuriosaAI RNGD card (furiosa-llm) ([LLM benchmark](#llm-benchmark)) |
-| all CNN / LiDAR workloads | batch 1, N = 1; FP32 on the GPU, int8 on the MLA400, BF16 on the Eagle-N |
+| device | one NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition |
+| software | CUDA 13.0 (headers, NVRTC, driver API, NVML), cuDNN 9.1 plan executor with a pinned algorithm table, CUDA event brackets, optional Nsight Systems cross-check |
+| detection | YOLOX-Tiny (416 × 416), S, M, L, X — official ONNX, converted offline to cuDNN plans |
+| segmentation | DeepLabV3+ R-18, R-50, R-101 — mmsegmentation Cityscapes checkpoints, exported to ONNX and converted offline to cuDNN plans |
+| 3D detection | CenterPoint-Pillars — mmdetection3d nuScenes checkpoint (pillar 0.2 m, circle NMS), exported to ONNX and converted offline to a cuDNN plan |
+| LLM | Llama 3.2 1B / 3B Instruct and Llama 3.1 8B Instruct with vLLM |
+| execution | batch 1, N = 1, FP32 |
 
-Before a run starts, the runner rejects a plan whose fixed-rate deadline does not follow its rate, an input whose
-preprocessing contract differs from the workload's, a native runner not built from the current native sources, a
-cuDNN plan that reads or writes outside its buffers or leaves part of the task output unwritten, and a misaligned
-timing offset.
+### Canonical result (v0.1.0 reference evidence)
+
+YOLOX-S on the first 1,000 COCO val2017 images, fixed rate 30 Hz, N = 1 (run `run-20261009T044411Z-003b1415f3b3`,
+no foreign GPU process, shared host). Latencies in µs, nearest-rank over the 1,000 completed requests:
+
+| metric | p50 | p90 | p99 | max_observed |
+|---|---:|---:|---:|---:|
+| request completion | 4,876.2 | 5,390.7 | 6,529.0 | 9,423.0 |
+| DUT service | 4,874.4 | 5,355.3 | 6,397.0 | 7,634.3 |
+| output ready | 5,066.4 | 5,678.3 | 6,832.9 | 10,380.3 |
+| device execution bracket (device clock) | 4,490.6 | 4,834.4 | 5,500.5 | 7,008.4 |
+
+Completed 1,000 / 1,000, no drops, timeouts or errors; completion and output-ready deadline misses 0 (deadline
+33.333333 ms); achieved completion rate 30.025/s at an offered 30.000/s. COCO bbox quality (conditional, coverage
+1.0): AP 0.42892, AP50 0.61348, AP75 0.46807; at score ≥ 0.5 / IoU ≥ 0.5 precision 0.83621, recall 0.50288. This
+is a reference-accelerator result: not a ranking, not a worst-case bound. Full table, setup, earlier runs, guard
+results and limitations: [`docs/results/v0.1.0-gpu-reference-result.md`](docs/results/v0.1.0-gpu-reference-result.md).
+
+### Detection and segmentation models (v0.1.2)
+
+Five fixed-rate runs per model (min–max over the runs). Every run completed all requests with no drops, timeouts,
+errors or deadline misses, and its outputs were byte-identical to the model's golden capture.
+
+| model | data | rate | DUT-service p50 (ms) | DUT-service max_observed (ms) | quality |
+|---|---|---|---:|---:|---|
+| YOLOX-Tiny | COCO val2017, first 1,000 | 30 Hz | 2.23–2.30 | 2.44–2.92 | AP 0.3437 |
+| YOLOX-S | COCO val2017, first 1,000 | 30 Hz | 4.36–4.38 | 4.45–5.65 | AP 0.4289 |
+| YOLOX-M | COCO val2017, first 1,000 | 30 Hz | 9.75–10.57 | 9.86–10.79 | AP 0.4948 |
+| YOLOX-L | COCO val2017, first 1,000 | 30 Hz | 16.18–16.22 | 16.41–18.06 | AP 0.5294 |
+| YOLOX-X | COCO val2017, first 1,000 | 30 Hz | 26.76–28.06 | 26.85–29.56 | AP 0.5327 |
+| DeepLabV3+ R-18 | Cityscapes val, 500 | 2 Hz | 25.51–25.86 | 27.38–29.65 | mIoU 0.7676 |
+| DeepLabV3+ R-50 | Cityscapes val, 500 | 2 Hz | 114.27–114.76 | 122.43–129.57 | mIoU 0.7985 |
+| DeepLabV3+ R-101 | Cityscapes val, 500 | 2 Hz | 165.64–166.45 | 175.14–176.22 | mIoU 0.8087 |
+
+Models are compared side by side; differences between models are not attributed to a cause. Each family was
+measured on one day, so these YOLOX-S timings are not compared with the v0.1.0 run above. Numeric checks against
+ONNX Runtime and the official implementations, the replay-rate rule, operating records and limitations:
+[`docs/results/v0.1.2-gpu-reference-result.md`](docs/results/v0.1.2-gpu-reference-result.md).
+
+### CenterPoint-Pillars
+
+Fixed rate 20 Hz (the LiDAR sweep rate), deadline 50 ms. The measured path runs from the pillar input to the decoded
+3D detections; the 10-sweep merge and the voxelization are built offline.
+
+| scope | runs | DUT-service p50 (ms) | DUT-service max_observed (ms) | quality |
+|---|---|---:|---:|---|
+| nuScenes v1.0-mini, the four official-val scenes (162 samples) | 5 runs (min–max) | 10.42–10.45 | 10.54–10.64 | mAP 0.536228 / NDS 0.585987 |
+| nuScenes val (6,019 samples) | 1 run series, 7 parts | 10.34 | 10.79 | mAP 0.480113 / NDS 0.584944 |
+
+Every run completed all requests with no drops, timeouts, errors or deadline misses, and the mini runs' outputs were
+byte-identical to the golden capture. The official mmdetection3d implementation on the same samples (CPU, the nine
+nearest sweeps) gives mAP 0.536228 / NDS 0.585986 on mini and 0.480101 / 0.584938 on val. The mini and val scores
+are not compared with each other, because the four mini scenes have a skewed class mix. The model zoo's published
+mAP 48.70 / NDS 59.62 already differ for the official re-run; one known cause is that the official configuration
+draws nine of the ten sweeps at random, which SDV-BMT fixes to the nine nearest. Numeric checks, the replay-rate
+rule, the run-series details and limitations:
+[`docs/results/centerpoint-pillars-gpu-reference-result.md`](docs/results/centerpoint-pillars-gpu-reference-result.md).
+
+## NPU backends
+
+The repository also includes backend implementations for automotive NPUs: native measurement-plane backends, DUT
+adapters and offline build tools, plus an NPU path for the LLM benchmark. They use the same workload contracts,
+datasets, evidence bundle and evaluation as the GPU reference; only the model execution differs. They need the
+vendor's SDK, which is not part of this repository. Publishing NPU results is subject to each vendor's terms, so
+only results cleared for publication appear in [`docs/results/`](docs/results/). The NPU backends are
+experimental and may change within 1.x together with the vendor SDKs.
 
 ## Running a model (one command)
 
@@ -133,44 +219,45 @@ REPS=1 R=runs/bench tools/run_model.sh yolox-s
 One command validates the plan, runs `REPS` timed runs, evaluates them and writes the model's metric table
 `$R/tables/<model>.metrics.csv` ([`docs/metric_table.md`](docs/metric_table.md)); the four representative metrics
 are printed as a table. `tools/show_metrics.py` prints a metric table in a readable form. A name without a device
-suffix runs on the GPU; `-mla400`, `-eagle-n` and `-rngd` select the NPU of that host (`yolox-*-mla400`,
-`deeplabv3plus-r18-eagle-n`, `llama-*-rngd`). The script's header lists what each device needs.
+suffix runs on the GPU reference backend; a suffix selects another device backend. The script's header lists what
+each backend needs.
 
-## Quick start (no GPU needed)
+## Quick start (no hardware needed)
 
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"          # runtime: PyYAML; dev: pytest
-make -C native portable                    # fake native runner + C++ unit tests (g++, no CUDA)
+make -C native portable                    # fake native runner + C++ unit tests (g++ only)
 
-# deterministic core (MOCK, virtual clock)
+# deterministic core (virtual clock)
 .venv/bin/sdv-bmt validate configs/experiments/g2-recorded-scenario-overload.yaml
 .venv/bin/sdv-bmt run      configs/experiments/g2-recorded-scenario-overload.yaml --out runs/demo
 .venv/bin/sdv-bmt evaluate runs/demo/g2-recorded-scenario-overload/<run_id>
 
-# realtime harness with the fake native backend (MOCK, host clock)
+# realtime harness with the fake native backend (host clock)
 .venv/bin/sdv-bmt run configs/experiments/r1-fake-native-harness-floor.yaml --out runs/demo
 ```
 
 The realtime example pins the native runner (`realtime.cpu_affinity`) to CPUs 0–15 and 32–47 of the
-reference host; on a machine without those CPUs the run stops with `cpu_affinity_not_realized`. Edit that
-list to CPUs available on your machine to run it locally.
+reference host; on a machine without those CPUs the run stops with `cpu_affinity_not_realized` — an example of a
+planned condition that was not realized. Edit that list to CPUs available on your machine to run it locally.
 
-`sdv-bmt evaluate` uses Metric Set v1.1; `--catalog sdv-bmt-model-metric-set-v1` reproduces v0.1.0
-evaluations and `--catalog bmt-portable-v1-stage1a` those of the earlier Stage 1A catalog. `--eval-config FILE` overrides the deadline and may set `required_rate_hz` and
-`quality_operating_point`. Exit codes: `0` success, `1` run executed but failed, `2` rejected.
+`sdv-bmt evaluate` uses Metric Set v1.1 by default; `--catalog` selects another catalog. `--eval-config FILE`
+overrides the deadline and may set `required_rate_hz` and `quality_operating_point`. Exit codes: `0` success,
+`1` run executed but failed, `2` rejected.
 
 ## Testing
 
 | scope | command | GPU tests |
 |---|---|---|
-| CPU / portable (also GitHub Actions) | `make -C native portable && native/build/sdv-bmt-native-tests` and `SDV_BMT_MAKE_TARGETS=portable .venv/bin/python -m pytest -q -rs` | reported NOT RUN (skipped), never passed |
+| portable (no hardware; also GitHub Actions) | `make -C native portable && native/build/sdv-bmt-native-tests` and `SDV_BMT_MAKE_TARGETS=portable .venv/bin/python -m pytest -q -rs` | reported NOT RUN (skipped), never passed |
 | local GPU release validation | `make -C native && native/build/sdv-bmt-native-tests` and `.venv/bin/python -m pytest -q` | run on the GPU named by UUID in `configs/duts/nvidia-*.yaml` and `tests/device/` |
 
 The NVIDIA build expects CUDA 13.0 in `/usr/local/cuda-13.0` and cuDNN 9 from the pip package
-`nvidia-cudnn-cu12`; override with `make -C native CUDA_HOME=... CUDNN_ROOT=...`. Tests that need the local COCO
-subset, the Cityscapes val set or the nuScenes inputs, the model files or local evidence bundles skip as NOT RUN
-when those are absent.
+`nvidia-cudnn-cu12`; override with `make -C native CUDA_HOME=... CUDNN_ROOT=...`. Tests that need a device, a
+dataset, model files or local evidence bundles that are not present are reported as NOT RUN (skipped), never as
+passed. Golden regression cases G-1..G-5 cover the deterministic core; conformance tests cover the realtime harness
+and each backend.
 
 ## Reproducing the GPU reference result
 
@@ -231,108 +318,41 @@ JPEG decoder can produce different pixels and therefore a different digest, whic
   The configurations pin the plan, the weights and the input index by SHA-256, so a different file is rejected
   before the run.
 
-## Example: canonical GPU result (v0.1.0 reference evidence)
-
-YOLOX-S on the first 1,000 COCO val2017 images, one NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition, fixed rate 30 Hz, N = 1 (run `run-20261009T044411Z-003b1415f3b3`, no foreign GPU process, shared host). Latencies in µs, nearest-rank over the 1,000 completed requests:
-
-| metric | p50 | p90 | p99 | max_observed |
-|---|---:|---:|---:|---:|
-| request completion | 4,876.2 | 5,390.7 | 6,529.0 | 9,423.0 |
-| DUT service | 4,874.4 | 5,355.3 | 6,397.0 | 7,634.3 |
-| output ready | 5,066.4 | 5,678.3 | 6,832.9 | 10,380.3 |
-| device execution bracket (device clock) | 4,490.6 | 4,834.4 | 5,500.5 | 7,008.4 |
-
-Completed 1,000 / 1,000, no drops, timeouts or errors; completion and output-ready deadline misses 0 (deadline 33.333333 ms); achieved completion rate 30.025/s at an offered 30.000/s. COCO bbox quality (conditional, coverage 1.0): AP 0.42892, AP50 0.61348, AP75 0.46807; at score ≥ 0.5 / IoU ≥ 0.5 precision 0.83621, recall 0.50288. This is a reference-accelerator result: not an NPU result, not a ranking, not a worst-case bound. Full table, setup, earlier runs, guard results and limitations: [`docs/results/v0.1.0-gpu-reference-result.md`](docs/results/v0.1.0-gpu-reference-result.md).
-
-## v0.1.2 reference models
-
-Same GPU, FP32, batch 1, N = 1, five fixed-rate runs per model (min–max over the runs). Every run completed all
-requests with no drops, timeouts, errors or deadline misses, and its outputs were byte-identical to the model's
-golden capture.
-
-| model | data | rate | DUT-service p50 (ms) | DUT-service max_observed (ms) | quality |
-|---|---|---|---:|---:|---|
-| YOLOX-Tiny | COCO val2017, first 1,000 | 30 Hz | 2.23–2.30 | 2.44–2.92 | AP 0.3437 |
-| YOLOX-S | COCO val2017, first 1,000 | 30 Hz | 4.36–4.38 | 4.45–5.65 | AP 0.4289 |
-| YOLOX-M | COCO val2017, first 1,000 | 30 Hz | 9.75–10.57 | 9.86–10.79 | AP 0.4948 |
-| YOLOX-L | COCO val2017, first 1,000 | 30 Hz | 16.18–16.22 | 16.41–18.06 | AP 0.5294 |
-| YOLOX-X | COCO val2017, first 1,000 | 30 Hz | 26.76–28.06 | 26.85–29.56 | AP 0.5327 |
-| DeepLabV3+ R-18 | Cityscapes val, 500 | 2 Hz | 25.51–25.86 | 27.38–29.65 | mIoU 0.7676 |
-| DeepLabV3+ R-50 | Cityscapes val, 500 | 2 Hz | 114.27–114.76 | 122.43–129.57 | mIoU 0.7985 |
-| DeepLabV3+ R-101 | Cityscapes val, 500 | 2 Hz | 165.64–166.45 | 175.14–176.22 | mIoU 0.8087 |
-
-Models are compared side by side; differences between models are not attributed to a cause. Each family was
-measured on one day, so these YOLOX-S timings are not compared with the v0.1.0 run above. Numeric checks against
-ONNX Runtime and the official implementations, the replay-rate rule, operating records and limitations:
-[`docs/results/v0.1.2-gpu-reference-result.md`](docs/results/v0.1.2-gpu-reference-result.md).
-
-## CenterPoint-Pillars
-
-Same GPU, FP32, batch 1, N = 1, fixed rate 20 Hz (the LiDAR sweep rate), deadline 50 ms. The measured path runs from
-the pillar input to the decoded 3D detections; the 10-sweep merge and the voxelization are built offline.
-
-| scope | runs | DUT-service p50 (ms) | DUT-service max_observed (ms) | quality |
-|---|---|---:|---:|---|
-| nuScenes v1.0-mini, the four official-val scenes (162 samples) | 5 runs (min–max) | 10.42–10.45 | 10.54–10.64 | mAP 0.536228 / NDS 0.585987 |
-| nuScenes val (6,019 samples) | 1 run series, 7 parts | 10.34 | 10.79 | mAP 0.480113 / NDS 0.584944 |
-
-Every run completed all requests with no drops, timeouts, errors or deadline misses, and the mini runs' outputs were
-byte-identical to the golden capture. The official mmdetection3d implementation on the same samples (CPU, the nine
-nearest sweeps) gives mAP 0.536228 / NDS 0.585986 on mini and 0.480101 / 0.584938 on val. The mini and val scores
-are not compared with each other, because the four mini scenes have a skewed class mix. The model zoo's published
-mAP 48.70 / NDS 59.62 already differ for the official re-run; one known cause is that the official configuration
-draws nine of the ten sweeps at random, which SDV-BMT fixes to the nine nearest. Numeric checks, the replay-rate
-rule, the run-series details and limitations:
-[`docs/results/centerpoint-pillars-gpu-reference-result.md`](docs/results/centerpoint-pillars-gpu-reference-result.md).
-
-## NPU ports
-
-| NPU | models | how it runs | reproduction |
-|---|---|---|---|
-| Mobilint MLA400 (ARIES) | YOLOX-Tiny, S, M, L, X | int8 compiled models on one chip in single-core mode, native measurement plane (qbruntime C++) | [`tools/mobilint/README.md`](tools/mobilint/README.md) |
-| BOS Eagle-N | DeepLabV3+ R-18 | BF16 plan on a TTNN executor in a pinned BOS container, native measurement plane; the baseline replays its own rate (`BASELINE_RATE_HZ` in `tools/eagle_n/configure.py`) | [`tools/eagle_n/README.md`](tools/eagle_n/README.md) |
-| FuriosaAI RNGD | Llama 3.2 1B / 3B, Llama 3.1 8B Instruct | furiosa-llm, LLM measurement plane | [`docs/llm_benchmark.md`](docs/llm_benchmark.md) |
-
-Each port uses the same workload contract, dataset and evaluation as the GPU path of the model; only the model
-execution differs. The MLA400 and Eagle-N results are not published here: the Mobilint SDK license forbids publishing
-results without Mobilint's written consent, and the Eagle-N follows the same rule until BOS's conditions are
-confirmed. DeepLabV3+ R-50 and R-101 run on the GPU only. The NPU adapters and their DUT options are experimental and
-may change within 1.x together with the vendor SDKs.
+The LLM path is described in [`docs/llm_benchmark.md`](docs/llm_benchmark.md).
 
 ## LLM benchmark
 
-A separate Python measurement plane runs Llama 3.2 1B / 3B Instruct and Llama 3.1 8B Instruct on the GPU with vLLM
-and on a FuriosaAI RNGD card with furiosa-llm. The command is `python -m sdv_bmt.llm`. It uses its own bundle
-format and catalog (`sdv-bmt-llm-v1`), and its numbers are not comparable with the Metric Set results above. GPU
-and RNGD results are whole-system results (runtime + driver + device), shown side by side and not attributed to a
-chip. Measurement definitions and reproduction: [`docs/llm_benchmark.md`](docs/llm_benchmark.md). Results:
-[`docs/results/llm-llama3-gpu-rngd-result.md`](docs/results/llm-llama3-gpu-rngd-result.md).
+A separate Python measurement plane (`python -m sdv_bmt.llm`) benchmarks LLM serving runtimes with the same
+evidence-first approach; on the GPU reference it runs the Llama models with vLLM. It uses its own bundle format and catalog (`sdv-bmt-llm-v1`), and its numbers are not
+comparable with the Metric Set results above. Results are whole-system results (runtime + driver + device), shown
+side by side and not attributed to a chip.
 
 ## Repository layout
 
 | path | content |
 |---|---|
 | `src/sdv_bmt/` | Python core: contracts, input providers, workloads, DUT adapters, runner, evidence, metrics, CLI; `llm/` the LLM path |
-| `native/` | C++ native measurement plane (`src/common`, `src/fake`, `src/nvidia`, `src/mobilint`, `src/eagle_n`) and its unit tests |
+| `native/` | C++ native measurement plane (`src/common`, `src/fake` and one directory per device backend) and its unit tests |
 | `configs/` | experiment plans, inputs, workloads, DUT configs, stress specs, output references, small fixtures |
 | `tests/` | unit, conformance, golden, architecture, e2e, native and device tests |
 | `tools/` | offline asset preparation, cross-checks and analysis (outside the core's code identity) |
 | `docs/` | architecture, measurement protocol, evidence, metric catalog (Korean), `docs/results/` and `docs/release-notes/` (English) |
-| `docs/design/` | Stage 0 design basis (v03) and Stage 1A implementation authorization, public editions (Korean) |
+| `docs/design/` | Stage 0 design basis and Stage 1A implementation authorization, public editions (Korean) |
 
-## Roadmap
-
-v0.1.0 covered the deterministic core, the native realtime harness, the NVIDIA GPU reference backend, the real
-YOLOX-S / COCO baseline and Model-level Metric Set v1. v0.1.2 added the YOLOX family, DeepLabV3+ segmentation on
-Cityscapes and Metric Set v1.1. v1.0 adds CenterPoint-Pillars with run series and Metric Set v1.2, the LLM path, the
-NPU ports (Mobilint MLA400, BOS Eagle-N, FuriosaAI RNGD), the metric table and one-command runs. Planned next, each
-behind its own review gate: 1.1 measurement extensions for result attribution (planned earlier as "v0.2"), then the
-Driving Scenario stage, hardware stress, and the Scenario × Stress matrix.
+## Stability and roadmap
 
 Within 1.x the commands `validate`, `run` and `evaluate` with their exit codes, the configuration file formats
 (fields are only added), the evidence bundle format, the metric definitions of Metric Set v1, v1.1 and v1.2, and the
-metric table columns are kept; a change that breaks them is 2.0. The NPU adapters, the LLM path and the tools are
+metric table columns are kept; a change that breaks them is 2.0. Device adapters, the LLM path and the tools are
 experimental and may change within 1.x.
+
+Version history: v0.1.0 covered the deterministic core, the native realtime harness, the GPU reference backend,
+the real YOLOX-S / COCO baseline and Model-level Metric Set v1. v0.1.2 added the YOLOX family, DeepLabV3+
+segmentation on Cityscapes and Metric Set v1.1. v1.0 adds CenterPoint-Pillars with run series and Metric Set v1.2,
+the LLM path, the NPU backends, the metric table and one-command runs.
+
+Planned next, each behind its own review gate: 1.1 measurement extensions for result attribution (planned earlier
+as "v0.2"), then the Driving Scenario stage, hardware stress, and the Scenario × Stress matrix.
 
 Not in v1.0: driving scenarios, stress sweeps, system-level (Autoware) evaluation, WCET or FTTI claims,
 functional-safety compliance claims, calibration, energy per inference, DRAM bandwidth, AI error rates per hour or
@@ -340,4 +360,5 @@ km, TTC / PET / DST, SPFM / LFM / PMHF / FIT.
 
 ![SDV-BMT development roadmap: Stage 0 to Stage 6 and Phase 2](docs/Dev_roadmap.png)
 
-*Stages 0 and 1A are complete; 2a, 1R and 2b were carried out on the NVIDIA GPU reference track in v0.1.0 and v0.1.2 and on three NPUs in v1.0; the measurement extensions (1.1) and the Driving Scenario stage are next.*
+*Stages 0 and 1A are complete; 2a, 1R and 2b were carried out on the GPU reference track in v0.1.0 and v0.1.2 and
+on NPU backends in v1.0; the measurement extensions (1.1) and the Driving Scenario stage are next.*
