@@ -305,7 +305,7 @@ eagle_n_runs() {  # name: validate in the container, REPS runs in the container 
   if [ $DRY = 0 ] && compgen -G "$R/vision/$exp/run-*" > /dev/null; then
     say "$name: $R/vision/$exp already has runs; use a new R"; return 3
   fi
-  say "$name: validate $cfg (in the BOS container, no device)"
+  say "$name: validate $cfg"
   x "$EN_PY" -B "$EN_LAUNCH" validate "$cfg" --evidence "$EN_EVID" || { say "$name: validate rejected (see $LOG)"; return 1; }
   if [ $DRY = 0 ] && ! grep -q '"status": "valid"' "$(en_evidence)/run.log" 2>/dev/null; then
     say "$name: validate rejected (see $LOG)"; return 1
