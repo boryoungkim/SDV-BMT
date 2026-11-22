@@ -20,8 +20,9 @@ tools/run_model.sh all-mla400           # the 5 MLA400 models in order, on the M
 | Variable | Meaning |
 |---|---|
 | `R` | results root (default `runs/bench-YYYYMMDD`); a model whose runs already exist below it is refused |
-| `REPS` | runs per model (default 5); the MMLU runs and the CenterPoint val series run once |
+| `REPS` | runs per model (default 5); the tinyMMLU runs and the CenterPoint val series run once |
 | `SDV_BMT_MODELS`, `SDV_BMT_DATASETS`, `SDV_BMT_CACHE`, `VLLM_PY`, `FURIOSA_PY`, `HF_HOME` | Llama models only, see `docs/llm_benchmark.md` |
+| `LMEVAL_PY`, `TINYMMLU_IRT_PKL` | Llama models, optional: the lm-eval environment and the pinned `tinyBenchmarks.pkl`; with both, the table also carries the tinyMMLU gp-IRT value (`tools/llm/tinymmlu_irt.py`) |
 | `MLA400_DEVICE` | MLA400 models only: the device file checked for other users (default: the device of the DUT config) |
 
 What each model runs:
@@ -31,8 +32,8 @@ What each model runs:
 | `yolox-{tiny,s,m,l,x}`, `deeplabv3plus-{r18,r50,r101}` | `configs/experiments/<model>-baseline.yaml`, `REPS` runs | `sdv-bmt-model-metric-set-v1.1` |
 | `centerpoint-pillar02` | `centerpoint-pillar02-mini-baseline.yaml` (`REPS` runs) and the run series `centerpoint-pillar02-val-series.yaml` (once) | `sdv-bmt-model-metric-set-v1.2` |
 | `centerpoint-pillar02-mini` | `centerpoint-pillar02-mini-baseline.yaml` only (`REPS` runs on the 162 mini samples, no val run series) | `sdv-bmt-model-metric-set-v1.2` |
-| `llama-3.2-1b-instruct`, `llama-3.2-3b-instruct`, `llama-3.1-8b-instruct` | on the GPU: `tools/llm/run_baselines.sh gpu`, `REPS` speed runs and one MMLU run | `sdv-bmt-llm-v1` |
-| `llama-3.2-1b-instruct-rngd`, `llama-3.2-3b-instruct-rngd`, `llama-3.1-8b-instruct-rngd` | on the FuriosaAI RNGD card: `tools/llm/run_baselines.sh rngd`, `REPS` speed runs and one MMLU run | `sdv-bmt-llm-v1` |
+| `llama-3.2-1b-instruct`, `llama-3.2-3b-instruct`, `llama-3.1-8b-instruct` | on the GPU: `tools/llm/run_baselines.sh gpu`, `REPS` speed runs and one tinyMMLU run | `sdv-bmt-llm-v1` |
+| `llama-3.2-1b-instruct-rngd`, `llama-3.2-3b-instruct-rngd`, `llama-3.1-8b-instruct-rngd` | on the FuriosaAI RNGD card: `tools/llm/run_baselines.sh rngd`, `REPS` speed runs and one tinyMMLU run | `sdv-bmt-llm-v1` |
 | `yolox-{tiny,s,m,l,x}-mla400` | `configs/experiments/<model>-baseline.yaml` on the Mobilint MLA400, `REPS` runs | `sdv-bmt-model-metric-set-v1.1` |
 
 A Llama model runs on one device per name, and its table holds that device only (`tables/llama-<m>.metrics.csv` for
@@ -114,8 +115,8 @@ For detailed results (every metric, every run), see the CSV file:
 | Column | Meaning |
 |---|---|
 | `row` | `headline`, `model` or `run` |
-| `task` | task of the workload (`coco-2017-object-detection`, `cityscapes-semantic-segmentation-19class`, `nuscenes-3d-detection-10class`, `llm-speed`, `llm-mmlu`) |
-| `dataset` | input data of the run. CNN / LiDAR: the input set of `manifest.json` and its item count, for example `coco-val2017-first1000 (1,000 items)` (a run series: the items of all parts). LLM: `speed-s1-s5 (synthetic token IDs)` for the speed workload file, `mmlu-1000 (1,000 items)` for the MMLU item list with the item total of the evaluation |
+| `task` | task of the workload (`coco-2017-object-detection`, `cityscapes-semantic-segmentation-19class`, `nuscenes-3d-detection-10class`, `llm-speed`, `llm-tinymmlu`; `llm-mmlu` for v1.0 bundles) |
+| `dataset` | input data of the run. CNN / LiDAR: the input set of `manifest.json` and its item count, for example `coco-val2017-first1000 (1,000 items)` (a run series: the items of all parts). LLM: `speed-s1-s5 (synthetic token IDs)` for the speed workload file, `tinymmlu-100 (100 items)` for the tinyMMLU item list with the item total of the evaluation |
 | `model` | model (workload) name |
 | `device` | device name as recorded in the run: the GPU product name, or vendor and accelerator family with the DUT config (for example `Mobilint NPU (mobilint-mla400-aries2-single-c0c0)`) |
 | `experiment_id` | experiment identifier |
@@ -139,7 +140,7 @@ empty cells mean null or not applicable.
 | 2D detection (YOLOX) | DUT service time (median) ← `bmt.dut_service.p50`; Output-ready latency (p99) ← `bmt.output_ready.p99`; Deadline miss rate (output ready) ← `bmt.deadline.output_ready_miss_rate`; COCO box AP ← `quality.detection.conditional.ap` |
 | Segmentation (DeepLabV3+) | the same three time metrics; Cityscapes mIoU (19 classes) ← `quality.segmentation.conditional.miou` |
 | 3D detection (CenterPoint) | the same three time metrics; nuScenes detection score (NDS) ← `quality.det3d.conditional.nds` |
-| LLM, per device | Time to first token, TTFT (S3, median) ← `llm.S3.ttft_ns.p50`; Time per output token, TPOT (S3, median) ← `llm.S3.tpot_ns.p50`; End-to-end latency (S3, median) ← `llm.S3.e2e_ns.p50` (speed experiment); MMLU accuracy (1,000 items, zero-shot) ← `llm.mmlu.accuracy` (MMLU experiment). S3 is the speed workload with 512 input and 512 output tokens |
+| LLM, per device | Time to first token, TTFT (S3, median) ← `llm.S3.ttft_ns.p50`; Time per output token, TPOT (S3, median) ← `llm.S3.tpot_ns.p50`; End-to-end latency (S3, median) ← `llm.S3.e2e_ns.p50` (speed experiment); tinyMMLU accuracy (100 items, lm-evaluation-harness method) ← `llm.tinymmlu.accuracy` and tinyMMLU gp-IRT estimate of MMLU accuracy ← `llm.tinymmlu.gpirt` (tinyMMLU experiment; the raw 100-item accuracy and the value the harness reports, side by side). S3 is the speed workload with 512 input and 512 output tokens |
 
 A headline row repeats the model row of its metric; the only change is ns → ms (value / 10^6). A headline metric the
 evaluation does not contain is listed with `status = not_in_evaluation`.
@@ -155,7 +156,7 @@ Model rows are the only values the table forms. They describe the runs and are n
 | text, different between runs | `status = differs_across_runs` |
 | none valid | `status` = the status all runs share (for example `insufficient_samples`), otherwise `no_valid_run` |
 
-A run value counts only when its status is `valid`. With one run (an MMLU run, a run series) the model row repeats
+A run value counts only when its status is `valid`. With one run (a tinyMMLU run, a run series) the model row repeats
 the run value.
 
 ## Rules
@@ -187,7 +188,11 @@ values are copied, nothing is recomputed.
 | `llm.streaming.unit` | `streaming.unit` (`token` or `chunk`) | validity_evidence, text |
 | `llm.<S1..S5>.count.{measured,fixed_length_ok,length_mismatch,error}` | `speed.<S>.counts` | performance, count |
 | `llm.<S1..S5>.<ttft_ns, tpot_ns, e2e_ns, decode_tps>.<p50, p90, p99, min, max_observed>` | `speed.<S>.<quantity>` (`p50` = `median_p50`) | performance, ns or 1/s |
-| `llm.mmlu.{accuracy,coverage}` | `quality.accuracy`, `quality.coverage` | task_quality, ratio |
+| `llm.tinymmlu.{accuracy,coverage}` | `quality.accuracy`, `quality.coverage` | task_quality, ratio |
+| `llm.tinymmlu.count.{total,correct,incorrect,failed,not_run}` | `quality.total`, `quality.counts` | task_quality, count |
+| `llm.tinymmlu.gpirt` | `estimate.gpirt` of the run in a result file of `tools/llm/tinymmlu_irt.py` given with `--irt` (run and evaluation IDs must match the table's evaluation; IRT parameter file pinned); `not_computed` without one | task_quality, ratio |
+| `llm.tinymmlu.<ttft_ns, e2e_ns>.<p50, p90, p99, min, max_observed>` | `task_request_times.<quantity>` (one request per item and choice) | performance, ns |
+| `llm.mmlu.{accuracy,coverage}` (v1.0 bundles) | `quality.accuracy`, `quality.coverage` | task_quality, ratio |
 | `llm.mmlu.count.{total,correct,incorrect_parsable,unparsable,failed,not_run}` | `quality.total`, `quality.counts` | task_quality, count |
 | `llm.mmlu.<ttft_ns, e2e_ns>.<p50, p90, p99, min, max_observed>` | `mmlu_request_times.<quantity>` | performance, ns |
 

@@ -31,11 +31,27 @@ from ..metrics.catalog import P99_MIN_SAMPLES, PERCENTILE_METHOD
 from ..metrics.portable import nearest_rank_index
 from . import LLM_BUNDLE_SCHEMA, LLM_CATALOG_VERSION
 from . import mmlu as mmlu_mod
+from . import tinymmlu as tinymmlu_mod
 from .workload import file_sha256, read_jsonl
 
 
 class LlmEvaluationError(RuntimeError):
     pass
+
+
+def _score_tinymmlu(ref: list[dict[str, Any]], measured: list[dict[str, Any]]) -> dict[str, Any]:
+    items = [{"item_id": r["item_id"], "answer": tinymmlu_mod.CHOICES.index(r["answer"])} for r in ref]
+    outputs: dict[str, dict[str, dict[str, Any]]] = {}
+    for r in measured:
+        outputs.setdefault(r["item_id"], {})[r["request_key"]] = {
+            "status": r["status"], "continuation_logprobs": r.get("prompt_token_logprobs")}
+    q = tinymmlu_mod.score(items, outputs)
+    q["input_token_ids_sha256"] = {f"{r['item_id']}#{r['request_key']}": r["input_token_ids_sha256"] for r in measured}
+    return q
+
+
+# workload kind -> scorer(quality reference rows, measured request records) -> quality block; a later task adds one
+TASK_SCORERS = {"tinymmlu": _score_tinymmlu}
 
 
 def verify_bundle(run_dir: Path) -> dict[str, Any]:
@@ -200,6 +216,13 @@ def evaluate(run_dir: Path) -> Path:
         times = [request_times(r) for r in measured]
         times = [t for t in times if t]
         result["mmlu_request_times"] = {"ttft_ns": stats([t["ttft_ns"] for t in times]),
+                                        "e2e_ns": stats([t["e2e_ns"] for t in times])}
+    elif kind in TASK_SCORERS:
+        ref = list(read_jsonl(run_dir / "quality_reference.jsonl"))
+        result["quality"] = TASK_SCORERS[kind](ref, measured)
+        times = [request_times(r) for r in measured]
+        times = [t for t in times if t]
+        result["task_request_times"] = {"ttft_ns": stats([t["ttft_ns"] for t in times]),
                                         "e2e_ns": stats([t["e2e_ns"] for t in times])}
     else:
         raise LlmEvaluationError(f"unknown workload kind {kind!r}")

@@ -7,7 +7,9 @@ from another experiment config, a run without an evaluation, an evaluation whose
 eval_manifest.json record or that was made from a different manifest.json, and MOCK and ACTUAL runs in one table.
 
 The evaluation (``metrics.json``, catalog ``sdv-bmt-llm-v1``) is nested; ``metric_records`` spreads it into metric
-records.  Values are copied; names follow ``llm.<S1..S5|mmlu>.<quantity>.<statistic>``.
+records.  Values are copied; names follow ``llm.<S1..S5|mmlu|tinymmlu>.<quantity>.<statistic>``.  The tinyMMLU gp-IRT
+value (``llm.tinymmlu.gpirt``) is copied from result files of ``tools/llm/tinymmlu_irt.py`` given with ``--irt``, after
+matching the run and evaluation IDs; without one it is ``not_computed``.
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ from ..contracts.ids import digest_of
 from ..metrics.table import metric_csv_bytes, table_rows
 from . import LLM_RUN_SCHEMA
 from .evaluate import LlmEvaluationError, verify_bundle
+from .tinymmlu import IRT_PKL_SHA256, IRT_RESULT_TOOL, SCORING_RULE_ID
 from .workload import file_sha256
 
 # statistic name in the table -> key in the evaluation's statistics block
@@ -27,7 +30,8 @@ STATISTICS = (("p50", "median_p50"), ("p90", "p90"), ("p99", "p99"), ("min", "mi
 SPEED_QUANTITIES = (("ttft_ns", "ns"), ("tpot_ns", "ns"), ("e2e_ns", "ns"), ("decode_tps", "1/s"))
 SPEED_COUNTS = ("measured", "fixed_length_ok", "length_mismatch", "error")
 MMLU_COUNTS = ("correct", "incorrect_parsable", "unparsable", "failed", "not_run")
-TASKS = {"speed": "llm-speed", "mmlu": "llm-mmlu"}
+TASKS = {"speed": "llm-speed", "mmlu": "llm-mmlu", "tinymmlu": "llm-tinymmlu"}
+TASK_BY_RULE = {SCORING_RULE_ID: "tinymmlu"}  # quality block scoring rule -> metric name part
 
 
 class LlmReportError(ValueError):
@@ -72,7 +76,18 @@ def metric_records(metrics: dict[str, Any]) -> list[dict[str, Any]]:
         for quantity, unit in SPEED_QUANTITIES:
             out += _statistics(f"llm.{workload}.{quantity}", unit, block.get(quantity) or {})
     quality = metrics.get("quality")
-    if quality is not None:
+    task = TASK_BY_RULE.get((quality or {}).get("scoring_rule"))
+    if quality is not None and task is not None:
+        out.append(_record(f"llm.{task}.accuracy", "task_quality", "ratio", quality.get("accuracy")))
+        out.append(_record(f"llm.{task}.coverage", "task_quality", "ratio", quality.get("coverage")))
+        out.append(_record(f"llm.{task}.count.total", "task_quality", "count", quality.get("total")))
+        counts = quality.get("counts") or {}
+        for key in counts:
+            out.append(_record(f"llm.{task}.count.{key}", "task_quality", "count", counts.get(key)))
+        times = metrics.get("task_request_times") or {}
+        for quantity in ("ttft_ns", "e2e_ns"):
+            out += _statistics(f"llm.{task}.{quantity}", "ns", times.get(quantity) or {})
+    elif quality is not None:
         out.append(_record("llm.mmlu.accuracy", "task_quality", "ratio", quality.get("accuracy")))
         out.append(_record("llm.mmlu.coverage", "task_quality", "ratio", quality.get("coverage")))
         out.append(_record("llm.mmlu.count.total", "task_quality", "count", quality.get("total")))
@@ -122,15 +137,50 @@ def _dataset(workload: dict[str, Any], metrics: dict[str, Any]) -> Optional[str]
     kind = workload.get("kind")
     if kind == "speed" and workload.get("file"):
         return f"{Path(workload['file']).name.split('.')[0]} (synthetic token IDs)"
-    if kind == "mmlu" and workload.get("items_file"):
+    if kind in ("mmlu", "tinymmlu") and workload.get("items_file"):
         name = Path(workload["items_file"]).name.split(".")[0]
         total = (metrics.get("quality") or {}).get("total")
         return f"{name} ({total:,} items)" if isinstance(total, int) else name
     return None
 
 
-def experiment_rows(exp_dir: Path) -> tuple[list[dict[str, Any]], set[str]]:
-    """Run rows of one experiment directory and the execution kinds of its runs."""
+def read_irt(paths: Sequence[Path | str]) -> dict[str, dict[str, Any]]:
+    """run_id -> {eval_id, gpirt, source} from result files of tools/llm/tinymmlu_irt.py (pinned IRT parameters)."""
+    out: dict[str, dict[str, Any]] = {}
+    for path in map(Path, paths):
+        data = _read(path, "gp-IRT file")
+        if not isinstance(data, dict) or data.get("tool") != IRT_RESULT_TOOL:
+            raise LlmReportError(f"{path.name}: not a result file of {IRT_RESULT_TOOL}")
+        if (data.get("irt_parameters") or {}).get("file_sha256") != IRT_PKL_SHA256:
+            raise LlmReportError(f"{path.name}: made with other IRT parameters than the pinned tinyBenchmarks.pkl")
+        for run in data.get("runs") or []:
+            if run["run_id"] in out:
+                raise LlmReportError(f"{path.name}: run {run['run_id']} given twice")
+            est = run.get("estimate")
+            out[run["run_id"]] = {"eval_id": run["eval_id"], "gpirt": None if est is None else est.get("gpirt"),
+                                  "source": path.name}
+    return out
+
+
+def _irt_record(metrics: dict[str, Any], run_id: str, irt: Optional[dict[str, dict[str, Any]]],
+                label: str) -> list[dict[str, Any]]:
+    """The gp-IRT record of a tinyMMLU run: copied from the matching gp-IRT file entry, else not available."""
+    if TASK_BY_RULE.get((metrics.get("quality") or {}).get("scoring_rule")) != "tinymmlu":
+        return []
+    entry = (irt or {}).get(run_id)
+    if entry is None:
+        return [_record("llm.tinymmlu.gpirt", "task_quality", "ratio", None, "not_computed")]
+    if entry["eval_id"] != metrics["eval_id"]:
+        raise LlmReportError(f"{label}: {entry['source']} was computed from evaluation {entry['eval_id']}, the table "
+                             f"uses {metrics['eval_id']}")
+    if entry["gpirt"] is None:
+        return [_record("llm.tinymmlu.gpirt", "task_quality", "ratio", None, "incomplete_evaluation")]
+    return [_record("llm.tinymmlu.gpirt", "task_quality", "ratio", entry["gpirt"])]
+
+
+def experiment_rows(exp_dir: Path, irt: Optional[dict[str, dict[str, Any]]] = None
+                    ) -> tuple[list[dict[str, Any]], set[str]]:
+    """Run rows of one experiment directory and the execution kinds of its runs (``irt``: see ``read_irt``)."""
     record = _read(exp_dir / "experiment.json", exp_dir.name) if (exp_dir / "experiment.json").is_file() else None
     if not isinstance(record, dict) or record.get("schema") != LLM_RUN_SCHEMA:
         raise LlmReportError(f"{exp_dir.name}: not an LLM experiment directory (experiment.json, {LLM_RUN_SCHEMA})")
@@ -157,14 +207,16 @@ def experiment_rows(exp_dir: Path) -> tuple[list[dict[str, Any]], set[str]]:
                   "device": (resolved.get("device") or {}).get("name"), "experiment_id": experiment_id,
                   "run_id": manifest["run_id"], "eval_id": metrics["eval_id"],
                   "catalog_version": metrics.get("catalog_version")}
-        rows += [{**common, **rec} for rec in metric_records(metrics)]
+        records = metric_records(metrics) + _irt_record(metrics, manifest["run_id"], irt, label)
+        rows += [{**common, **rec} for rec in records]
     return rows, kinds
 
 
-def build_table(dirs: Sequence[Path | str]) -> list[dict[str, Any]]:
+def build_table(dirs: Sequence[Path | str], irt_files: Sequence[Path | str] = ()) -> list[dict[str, Any]]:
+    irt = read_irt(irt_files)
     experiments, kinds, seen = [], set(), set()
     for d in map(Path, dirs):
-        rows, run_kinds = experiment_rows(d)
+        rows, run_kinds = experiment_rows(d, irt)
         experiment_id = rows[0]["experiment_id"]
         if experiment_id in seen:
             raise LlmReportError(f"{experiment_id}: experiment given twice")
@@ -178,9 +230,10 @@ def build_table(dirs: Sequence[Path | str]) -> list[dict[str, Any]]:
     return table_rows(experiments)
 
 
-def write_table(dirs: Sequence[Path | str], out: Path | str) -> tuple[list[dict[str, Any]], bytes]:
+def write_table(dirs: Sequence[Path | str], out: Path | str,
+                irt_files: Sequence[Path | str] = ()) -> tuple[list[dict[str, Any]], bytes]:
     """Build the table and write it to ``out`` (created exclusively)."""
-    rows = build_table(dirs)
+    rows = build_table(dirs, irt_files)
     data = metric_csv_bytes(rows)
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)

@@ -14,10 +14,11 @@
 #
 # Environment:
 #   R     results root (default runs/bench-YYYYMMDD); everything goes below it and nothing is overwritten
-#   REPS  runs per model (default 5); the MMLU runs and the CenterPoint val series run once
+#   REPS  runs per model (default 5); the tinyMMLU runs and the CenterPoint val series run once
 #   Llama models (llama-<m> on the GPU with vLLM, llama-<m>-rngd on the FuriosaAI RNGD card with furiosa-llm) also need
 #   SDV_BMT_MODELS, SDV_BMT_DATASETS, SDV_BMT_CACHE, VLLM_PY, FURIOSA_PY and HF_HOME
-#   (the cache that holds the RNGD 8B artifact), see docs/llm_benchmark.md.
+#   (the cache that holds the RNGD 8B artifact), see docs/llm_benchmark.md.  With LMEVAL_PY (the lm-eval environment)
+#   and TINYMMLU_IRT_PKL (the pinned tinyBenchmarks.pkl) the table also carries the tinyMMLU gp-IRT value.
 #   MLA400 models (yolox-*-mla400) run on the host of the Mobilint MLA400 card: they need the native runner
 #   (tools/mobilint/build_native.sh), the device node of the DUT config and the compiled models (.mxq) named by the
 #   workloads (tools/mobilint/README.md).  MLA400_DEVICE overrides the device file checked for other users
@@ -391,7 +392,7 @@ run_llama() {  # model: llama-<m> (GPU, vLLM) or llama-<m>-rngd (RNGD, furiosa-l
     [ $DRY = 1 ] && say "$name: not set:$missing (needed for the real run)" \
       || { say "$name: export$missing first (docs/llm_benchmark.md)"; return 1; }
   fi
-  for c in configs/llm/experiments/"$m.$sfx".{speed,mmlu}.yaml; do
+  for c in configs/llm/experiments/"$m.$sfx".{speed,tinymmlu}.yaml; do
     [ -f "$c" ] || { say "$name: missing $c"; return 1; }
   done
   if [ $DRY = 0 ] && compgen -G "$R/llm/$m.$sfx.*/run-*" > /dev/null; then  # this device only: the other device's
@@ -400,7 +401,7 @@ run_llama() {  # model: llama-<m> (GPU, vLLM) or llama-<m>-rngd (RNGD, furiosa-l
   if [ -e "$MARK" ] && [ $DRY = 0 ]; then
     say "another timed run is in progress ($MARK):"; sed 's/^/    /' "$MARK"; return 3
   fi
-  say "$name: $dev (speed $REPS runs + MMLU 1 run)"  # run_baselines.sh holds runs/TIMED_RUN_IN_PROGRESS itself and
+  say "$name: $dev (speed $REPS runs + tinyMMLU 1 run)"  # run_baselines.sh holds runs/TIMED_RUN_IN_PROGRESS itself and
   watch "$name" "$(typical_s llama-$dev)" "llama_runs $dev" \
     env OUT="$R/llm" REPS="$REPS" "$LLM_BASELINES" "$dev" "$m" \
     || { say "$name: run_baselines.sh failed (see $LOG)"; return 1; }        # waits for an idle device
@@ -410,7 +411,19 @@ run_llama() {  # model: llama-<m> (GPU, vLLM) or llama-<m>-rngd (RNGD, furiosa-l
     say "$name: $done/$(( REPS + 1 )) runs completed (log $f)"
     if [ "$done" -ne $(( REPS + 1 )) ] || grep -q ABORT "$f"; then say "$name: incomplete, see $f"; return 1; fi
   fi
-  make_table "$name" "sdv_bmt.llm table" "$R/llm/$m.$sfx".{speed,mmlu}
+  local irt=() irt_out=$R/llm/$m.$sfx.tinymmlu-irt.json  # the gp-IRT value next to the raw accuracy (optional)
+  if [ -n "${LMEVAL_PY:-}" ] && [ -n "${TINYMMLU_IRT_PKL:-}" ]; then
+    if [ $DRY = 1 ]; then
+      echo "    + $LMEVAL_PY tools/llm/tinymmlu_irt.py --pkl $TINYMMLU_IRT_PKL --out $irt_out $R/llm/$m.$sfx.tinymmlu/run-*"
+    elif ! PYTHONPATH=src "$LMEVAL_PY" tools/llm/tinymmlu_irt.py --pkl "$TINYMMLU_IRT_PKL" --out "$irt_out" \
+           "$R/llm/$m.$sfx".tinymmlu/run-* >> "$LOG" 2>&1; then
+      say "$name: gp-IRT estimate failed (see $LOG)"; return 1
+    fi
+    irt=(--irt "$irt_out")
+  else
+    say "$name: gp-IRT not computed (set LMEVAL_PY and TINYMMLU_IRT_PKL, docs/llm_benchmark.md)"
+  fi
+  make_table "$name" "sdv_bmt.llm table" "$R/llm/$m.$sfx".{speed,tinymmlu} "${irt[@]}"
 }
 
 ELAPSED=0
@@ -437,7 +450,7 @@ plans_of() {  # model: the plan files its runs use
   case $1 in
     centerpoint-pillar02) echo configs/experiments/centerpoint-pillar02-{mini-baseline,val-series}.yaml ;;
     llama-*) local m dev sfx; read -r m dev sfx <<< "$(llama_target "$1")"
-             echo configs/llm/experiments/"$m.$sfx".{speed,mmlu}.yaml ;;
+             echo configs/llm/experiments/"$m.$sfx".{speed,tinymmlu}.yaml ;;
     *) echo configs/experiments/"$1"-baseline.yaml ;;
   esac
 }
@@ -448,7 +461,7 @@ dataset_of() {  # plan: its input data, written as the dataset line of the resul
   local dir f n; dir=$(dirname "$1")
   [ -f "$1" ] || return 0
   case $1 in
-    configs/llm/*)  # MMLU: the item list and its item count; speed: the workload file of synthetic token IDs
+    configs/llm/*)  # tinyMMLU: the item list and its item count; speed: the workload file of synthetic token IDs
       f=$(yaml_value "$1" items_file | tr -d '"')
       if [ -n "$f" ]; then
         n=$(grep -o '"item_id"' "$dir/$f" 2>/dev/null | wc -l); f=$(basename "$f")

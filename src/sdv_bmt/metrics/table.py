@@ -44,8 +44,9 @@ _VISION_TIMING = (
 )
 # task -> its representative metrics.  Vision: the frame-budget view of the approved report (typical service time,
 # tail of the time to a ready output, deadline misses) plus the task quality.  LLM: per device, the three speed
-# metrics of the middle workload S3 (512 input / 512 output tokens) from the speed experiment and the MMLU accuracy
-# from the MMLU experiment.
+# metrics of the middle workload S3 (512 input / 512 output tokens) from the speed experiment and the raw tinyMMLU
+# accuracy and the gp-IRT estimate (computed by tools/llm/tinymmlu_irt.py, given to the table with --irt) from the
+# tinyMMLU experiment; the MMLU entry reads v1.0 bundles.
 HEADLINES: dict[str, tuple[Headline, ...]] = {
     "coco-2017-object-detection": _VISION_TIMING + (
         Headline("quality.detection.conditional.ap", "COCO box AP", "ratio"),),
@@ -59,6 +60,10 @@ HEADLINES: dict[str, tuple[Headline, ...]] = {
         Headline("llm.S3.e2e_ns.p50", "End-to-end latency (S3, median)", "ms"),),
     "llm-mmlu": (
         Headline("llm.mmlu.accuracy", "MMLU accuracy (1,000 items, zero-shot)", "ratio"),),
+    "llm-tinymmlu": (
+        Headline("llm.tinymmlu.accuracy", "tinyMMLU accuracy (100 items, lm-evaluation-harness method)", "ratio"),
+        Headline("llm.tinymmlu.gpirt", "tinyMMLU gp-IRT estimate of MMLU accuracy (value the harness reports)",
+                 "ratio"),),
 }
 # a line printed under the headline table of a task
 HEADLINE_NOTES = {"llm-speed": "S3 = speed workload with 512 input and 512 output tokens"}

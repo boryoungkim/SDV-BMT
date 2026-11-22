@@ -25,6 +25,22 @@ class StreamItem:
     new_token_ids: list[int]
     finish_reason: Optional[str] = None
     num_cached_tokens: Optional[int] = None
+    # with gen["prompt_logprobs"]: log-probability of the actual prompt token at positions gen["score_from"].. (None
+    # where the runtime returned none); set on the first item that carries prompt log-probabilities
+    prompt_token_logprobs: Optional[list[Optional[float]]] = None
+
+
+def actual_token_logprobs(prompt_logprobs: Any, token_ids: list[int], start: int) -> list[Optional[float]]:
+    """Log-probability of the actual token at each position ``start..`` from a runtime's per-position prompt
+    log-probabilities (vLLM: dict token -> Logprob; furiosa-llm native: list of (token, Logprob); entry 0 is None)."""
+    out: list[Optional[float]] = []
+    for pos in range(start, len(token_ids)):
+        entry = prompt_logprobs[pos] if pos < len(prompt_logprobs) else None
+        if entry is not None and not isinstance(entry, dict):
+            entry = dict(entry)
+        v = entry.get(token_ids[pos]) if entry else None
+        out.append(None if v is None else float(getattr(v, "logprob", v)))
+    return out
 
 
 @dataclass
@@ -92,7 +108,12 @@ class FakeBackend(Backend):
             out = out[:natural]
             finish = "stop"
         await asyncio.sleep(0)
-        yield StreamItem([], None, 0)  # an item without tokens, as furiosa-llm sends first
+        first = StreamItem([], None, 0)  # an item without tokens, as furiosa-llm sends first
+        if gen.get("prompt_logprobs") is not None:  # deterministic stand-in values in (-6, 0)
+            first.prompt_token_logprobs = [
+                -(int(hashlib.sha256(f"{seed}:{p}".encode()).hexdigest()[:6], 16) % 6000 + 1) / 1000.0
+                for p in range(int(gen["score_from"]), len(token_ids))]
+        yield first
         for i in range(0, len(out), per_item):
             await asyncio.sleep(0)
             last = i + per_item >= len(out)
@@ -164,7 +185,8 @@ class VllmBackend(Backend):
         return SamplingParams(
             temperature=0.0, max_tokens=int(gen["max_tokens"]), min_tokens=int(gen.get("min_tokens", 0)),
             ignore_eos=bool(gen.get("ignore_eos", False)), stop_token_ids=list(gen.get("stop_token_ids") or []),
-            logprobs=gen.get("logprobs"), detokenize=False, output_kind=RequestOutputKind.DELTA,
+            logprobs=gen.get("logprobs"), prompt_logprobs=gen.get("prompt_logprobs"), detokenize=False,
+            output_kind=RequestOutputKind.DELTA,
         )
 
     async def stream(self, request_id: str, token_ids: list[int], gen: dict[str, Any]) -> AsyncIterator[StreamItem]:
@@ -175,6 +197,9 @@ class VllmBackend(Backend):
             c = out.outputs[0] if out.outputs else None
             item = StreamItem(list(c.token_ids) if c else [], c.finish_reason if c else None,
                               getattr(out, "num_cached_tokens", None))
+            if gen.get("prompt_logprobs") is not None and getattr(out, "prompt_logprobs", None):
+                item.prompt_token_logprobs = actual_token_logprobs(out.prompt_logprobs, list(token_ids),
+                                                                   int(gen["score_from"]))
             if gen.get("logprobs") and c is not None and c.logprobs:
                 item.logprobs = [{int(k): float(v.logprob) for k, v in step.items()} for step in c.logprobs]  # type: ignore[attr-defined]
             yield item
@@ -260,12 +285,18 @@ class FuriosaBackend(Backend):
         sp = SamplingParams(temperature=0.0, max_tokens=int(gen["max_tokens"]),
                             min_tokens=int(gen.get("min_tokens", 0)), ignore_eos=bool(gen.get("ignore_eos", False)),
                             stop_token_ids=list(gen.get("stop_token_ids") or []) or None,
-                            output_kind=RequestOutputKind.DELTA)
+                            prompt_logprobs=gen.get("prompt_logprobs"), output_kind=RequestOutputKind.DELTA)
         enc = BatchEncoding({"input_ids": list(token_ids), "attention_mask": [1] * len(token_ids)})
         async for out in self.llm.engine.stream_generate(enc, sp):
             c = out.outputs[0] if out.outputs else None
-            yield StreamItem(list(c.token_ids) if c else [], c.finish_reason if c else None,
-                             getattr(out, "num_cached_tokens", None))
+            item = StreamItem(list(c.token_ids) if c else [], c.finish_reason if c else None,
+                              getattr(out, "num_cached_tokens", None))
+            if gen.get("prompt_logprobs") is not None:
+                # native outputs carry them on the completion output, Python ones on the request output
+                plp = getattr(c, "prompt_logprobs", None) or getattr(out, "prompt_logprobs", None)
+                if plp:
+                    item.prompt_token_logprobs = actual_token_logprobs(plp, list(token_ids), int(gen["score_from"]))
+            yield item
 
     def counters(self) -> dict[str, Any]:
         out: dict[str, Any] = {}

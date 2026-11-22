@@ -55,23 +55,44 @@ The normal in-request KV cache stays on. A control that cannot be read back is r
 | Workload | Content |
 |---|---|
 | Speed S1–S5 | Fixed-length synthetic inputs (input/output tokens): S1 128/64, S2 128/256, S3 512/512, S4 830/256, S5 1024/128. BOS + regular token IDs from a SHA-256 counter generator (seed 20261117). EOS ignored, min = max = target tokens. Per S: 3 warm-up + 5 measured requests. File: `configs/llm/speed-s1-s5.tokens.jsonl` |
-| Quality | **MMLU 1,000 items, zero-shot generation-based evaluation.** `cais/mmlu` `all` test at revision `c30699e8356da336a370243923dbaf21066bb9fe`, subject-proportional 1,000 items (seed 42), one user message with the model's chat template (date fixed to 26 Jul 2024), greedy, at most 16 new tokens, natural stop at the Llama 3 end tokens. Item list (IDs + SHA-256, no text): `configs/llm/mmlu-1000.items.json` |
+| Quality | **tinyMMLU 100 items, evaluated as the lm-evaluation-harness task `tinyMMLU`.** `tinyBenchmarks/tinyMMLU` `all` test (all 100 items, dataset order) at revision `cd6a8ee9e1e6f3f18f683535f6c096c386a85da3`. Prompt = the item's `input_formatted` text unchanged (the Open LLM Leaderboard MMLU prompt with its five solved examples already inside), no chat template. Item list (IDs + SHA-256, no text): `configs/llm/tinymmlu-100.items.json` |
 
 A speed request counts as a fixed-length measurement only if it produced exactly the target number of tokens
 with finish reason `length`. Any other completed request is counted as a length mismatch and kept out of the
 statistics.
 
-MMLU answer extraction applies these rules in order:
+tinyMMLU scoring follows the harness (`output_type: multiple_choice`, lm-evaluation-harness 0.4.13):
 
-1. If the first non-space character is A–D and is not followed by a letter or digit, it is the answer.
-2. Otherwise, an "answer is X" phrase gives the answer.
-3. Otherwise, the output is unparsable.
+1. For each choice `" A"` … `" D"` the request is the context + continuation token IDs, built as the harness
+   builds them for a causal model: `input_formatted + " " + letter` is encoded with the tokenizer's default special
+   tokens (one BOS), and the continuation is the part after the separately encoded context.
+2. Each request generates one token and asks the runtime for the log-probability of every prompt token
+   (`prompt_logprobs`). The choice's log-likelihood is the sum over the continuation tokens (one token here).
+3. The prediction is the first choice with the largest log-likelihood (as numpy `argmax`). The harness metric
+   `acc_norm` divides by the choice length in characters; the four lengths are equal, so it equals `acc`.
+4. The evaluation reports the raw accuracy over the 100 items (denominator always 100) and the per-item correctness
+   vector in dataset order. The value the harness reports, the tinyBenchmarks **gp-IRT** estimate of full-MMLU
+   accuracy, is computed from that vector by `tools/llm/tinymmlu_irt.py` with a pinned IRT parameter file.
 
-Unparsable outputs count as incorrect and are reported separately. Items that did not run make the
-evaluation incomplete.
+An item is scored only when all four requests completed with log-probabilities; otherwise it is `failed` and the
+evaluation is incomplete.
 
-The GPU–RNGD quality criterion is |accuracy difference| ≤ 0.01 on this fixed item set. It is a total-quality
-criterion only, not a statement of numerical equivalence or per-item identity.
+Equivalence with the harness was checked on the GPU for the three models with `tools/llm/tinymmlu_harness_check.py`
+(§5). The harness reads the same 100 documents and builds the same token IDs for all 400 requests. Predictions
+differ on 0–3 items per model and setting (Llama 3.2 1B under batch 1 and prefix caching off: identical predictions
+and the identical reported value). Every differing item is a tie on one side (equal top-two log-likelihoods, broken
+toward the first choice) and a one-step BF16 margin (0.125) on the other. The harness itself moves by one item when
+only its batching and prefix-caching settings change. On 100 items, expect 1–3 items (about 0.006 in gp-IRT)
+between implementations or execution settings.
+
+The GPU–RNGD comparison (`python -m sdv_bmt.llm compare`) reports the accuracy difference, the per-item prediction
+differences and the largest log-likelihood difference. The pass rule carried over from the MMLU 1,000-item set
+(|accuracy difference| ≤ 0.01) allows one item of 100 here and is under review.
+
+The v1.0 quality workload, MMLU 1,000 items with a generation-based evaluation (`cais/mmlu`, subject-proportional
+selection, chat template, answer-letter extraction), was replaced by tinyMMLU. Its code (`sdv_bmt.llm.mmlu`,
+`prepare-mmlu`) and item list (`configs/llm/mmlu-1000.items.json`) remain so that v1.0 bundles can still be
+evaluated; its experiment configurations are in the `v1.0` tag.
 
 ## 3. Models and artifacts
 
@@ -89,12 +110,18 @@ Locally built RNGD artifacts use the SDK's own Llama-3.1-8B bucket preset, restr
 chunked-prefill (append) buckets. Tensor parallelism is 8 PEs (one card). These artifacts are derived
 works and are not distributed.
 
+The speed runs use these 2,048-token artifacts. The longest tinyMMLU request is 3,029 tokens, so the tinyMMLU runs
+of 1B and 3B use a second artifact built from the same weights with `--max-model-len 4096` (same preset restricted to
+4,096 tokens: decode buckets up to 4,096 and 34 append buckets), `rngd/<model>-fl2026.3-4k`. The 8B artifact accepts
+131,072 tokens and serves both.
+
 ## 4. Environments
 
 | Device | Environment |
 |---|---|
 | GPU | Python 3.10 venv with vLLM 0.31.0 (torch 2.13.0 CUDA 13.0 build, transformers 5.17.0), pyarrow 25.0.1 and PyYAML 6.0.3, from PyPI |
 | RNGD | furiosa-llm 2026.3.0 (furiosa-llm-native 2026.3.0, torch 2.10.0, transformers 5.1.0), installed per the FuriosaAI SDK documentation; firmware 2026.4.0 (recorded in every run), driver 2026.4.0 on the reference host |
+| tinyMMLU tools (offline) | a separate venv: `uv pip install -r tools/llm/requirements-vllm.lock.txt lm-eval==0.4.13 "git+https://github.com/felipemaiapolo/tinyBenchmarks@e9a8b1031b0340571beb6c9ca3a27891be09a8fd"`. Used only by `tinymmlu_irt.py` and `tinymmlu_harness_check.py`, never by a run |
 
 Three package lists describe these environments. They have different roles:
 
@@ -126,10 +153,11 @@ there.
 
 ```bash
 export SDV_BMT_MODELS=/path/to/models          # <name>/ HF snapshots, rngd/<name>-fl2026.3/ artifacts
-export SDV_BMT_DATASETS=/path/to/datasets      # mmlu-1000/<name>.prompts.jsonl (generated below)
+export SDV_BMT_DATASETS=/path/to/datasets      # tinymmlu-100/<name>.prompts.jsonl (generated below)
 export SDV_BMT_CACHE=/path/to/cache
 export VLLM_PY=/path/to/vllm-venv/bin/python
 export FURIOSA_PY=/path/to/furiosa-llm-venv/bin/python
+export LMEVAL_PY=/path/to/lm-eval-venv/bin/python   # tinyMMLU tools only (§4)
 export PYTHONPATH=src
 
 # 0) Assets, with the Hugging Face CLI `hf` (installed in the vLLM environment). The meta-llama repositories
@@ -141,34 +169,41 @@ for m in "llama-3.2-1b-instruct meta-llama/Llama-3.2-1B-Instruct 9213176726f574b
 done
 HF_HOME=<HF cache holding the furiosa-ai 8B artifact> hf download furiosa-ai/Llama-3.1-8B-Instruct \
     --revision b678d58b0a13c9a4e94e9d235d70b53fe0d8bf32
-hf download cais/mmlu all/test-00000-of-00001.parquet --repo-type dataset \
-    --revision c30699e8356da336a370243923dbaf21066bb9fe --local-dir <mmlu>
-export HF_HUB_OFFLINE=1                        # everything below runs offline
+hf download tinyBenchmarks/tinyMMLU all/test-00000-of-00001.parquet --repo-type dataset \
+    --revision cd6a8ee9e1e6f3f18f683535f6c096c386a85da3 --local-dir <tinymmlu>
+#    (SHA-256 256f81ffdd6e64699df096c02afafba33626bfca08baed484c275e351993f317)
+curl -fL -o <irt>/tinyBenchmarks.pkl https://raw.githubusercontent.com/felipemaiapolo/tinyBenchmarks/e9a8b1031b0340571beb6c9ca3a27891be09a8fd/tinyBenchmarks/tinyBenchmarks.pkl
+#    (SHA-256 c3b6e426dfe7b100fe6d0ee960398e10a8763254bcead3be80cc6bc15abca284; the gp-IRT parameters)
+export HF_HUB_OFFLINE=1                        # everything below runs offline (except the harness check)
 
-# 1) MMLU prompts (needs the pinned all/test parquet; verifies the public item list)
-$VLLM_PY -m sdv_bmt.llm prepare-mmlu --parquet <mmlu>/all/test-00000-of-00001.parquet \
-    --tokenizer $SDV_BMT_MODELS/llama-3.1-8b-instruct --items configs/llm/mmlu-1000.items.json \
-    --prompts-out $SDV_BMT_DATASETS/mmlu-1000/llama-3.1-8b-instruct.prompts.jsonl \
-    --revision c30699e8356da336a370243923dbaf21066bb9fe
-# (repeat for the 1B and 3B tokenizers; all three give the same prompt file,
-#  SHA-256 b0129415cc1b683a936b07fcdf92e1c64ecb13b5f1d2e8cc4ca6c01e7ea907c3)
-$VLLM_PY -m sdv_bmt.llm lengths $SDV_BMT_DATASETS/mmlu-1000/llama-3.1-8b-instruct.prompts.jsonl --max-model-len 2048
+# 1) tinyMMLU requests (verifies the public item list; 4 requests per item)
+$VLLM_PY -m sdv_bmt.llm prepare-tinymmlu --parquet <tinymmlu>/all/test-00000-of-00001.parquet \
+    --tokenizer $SDV_BMT_MODELS/llama-3.1-8b-instruct --items configs/llm/tinymmlu-100.items.json \
+    --prompts-out $SDV_BMT_DATASETS/tinymmlu-100/llama-3.1-8b-instruct.prompts.jsonl \
+    --revision cd6a8ee9e1e6f3f18f683535f6c096c386a85da3
+# (repeat for the 1B and 3B tokenizers; all three give the same request file,
+#  SHA-256 9b3436e1166390acb211a55ded21d97e0e5094b4539d17118f1d7a9c1267b00c, 400 requests, 253-3,029 tokens)
+$VLLM_PY -m sdv_bmt.llm lengths $SDV_BMT_DATASETS/tinymmlu-100/llama-3.1-8b-instruct.prompts.jsonl --max-new 1 --max-model-len 4096
 
 # 2) RNGD artifacts for 1B / 3B (CPU build, about 12 / 19 min on the reference host)
 TMPDIR=<short path> $FURIOSA_PY tools/llm/rngd_build.py --model $SDV_BMT_MODELS/llama-3.2-1b-instruct \
     --out $SDV_BMT_MODELS/rngd/llama-3.2-1b-instruct-fl2026.3 --cache-dir $SDV_BMT_CACHE/furiosa-llm-build \
     --num-pipeline-builder-workers 4 --num-compile-workers 8
+#    and the tinyMMLU artifacts: the same with --max-model-len 4096 --out $SDV_BMT_MODELS/rngd/<model>-fl2026.3-4k
+#    (about 4 / 7 min on the reference host)
 
-# 3) Baselines: per model 5 speed runs + 1 MMLU run, one device at a time
+# 3) Baselines: per model 5 speed runs + 1 tinyMMLU run, one device at a time (REPS=0: tinyMMLU only)
 HF_HOME=<HF cache holding the furiosa-ai 8B artifact> tools/llm/run_baselines.sh gpu
 HF_HOME=<HF cache holding the furiosa-ai 8B artifact> tools/llm/run_baselines.sh rngd
 
 # 4) Summaries
 python3 -m sdv_bmt.llm aggregate runs/llm-llama/<experiment>/run-* --out <summary.json>
-python3 -m sdv_bmt.llm compare <GPU MMLU run> <RNGD MMLU run> --out <compare.json>
+python3 -m sdv_bmt.llm compare <GPU tinyMMLU run> <RNGD tinyMMLU run> --out <compare.json>
+$LMEVAL_PY tools/llm/tinymmlu_irt.py --pkl <irt>/tinyBenchmarks.pkl --out <irt.json> <tinyMMLU run> [...]
 
 # 5) Metric table (docs/metric_table.md): representative metrics first, then the overall result per metric, then one row per run
-python3 -m sdv_bmt.llm table runs/llm-llama/<experiment> [...] --out <metrics.csv>
+python3 -m sdv_bmt.llm table runs/llm-llama/<experiment> [...] --irt <irt.json> --out <metrics.csv>
+#    (--irt: the result file of tinymmlu_irt.py; the table then shows the raw tinyMMLU accuracy and the gp-IRT value)
 ```
 
 `run_baselines.sh` writes `runs/TIMED_RUN_IN_PROGRESS` while it runs, and checks that the device is idle
@@ -180,7 +215,8 @@ before every run. GPU runs use `CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICE
 |---|---|
 | `tools/llm/rngd_smoke.py` | furiosa-llm runtime, token-ID stream, fixed length, prefix-cache control (with an `on` positive control), long inputs |
 | `tools/llm/vllm_prefix_control.py` | vLLM prefix-cache positive control (off vs on) |
-| `tools/llm/hf_check.py` | vLLM BF16 vs Hugging Face transformers FP32 (CPU): first token, 32-token greedy generation, MMLU answer path on 100 items |
+| `tools/llm/tinymmlu_harness_check.py` | tinyMMLU path vs lm-evaluation-harness 0.4.13 itself (vLLM, GPU): same documents, same token IDs for all 400 requests, per-choice log-likelihoods, predictions and reported gp-IRT value; `--sdv-bmt-conditions` runs the harness with batch 1 and prefix caching off |
+| `tools/llm/hf_check.py` | vLLM BF16 vs Hugging Face transformers FP32 (CPU): first token, 32-token greedy generation, MMLU answer path on 100 items (v1.0 MMLU workload) |
 | `tools/llm/check_tokenizers.py` | the two tokenizers give token IDs the same meaning (vocabulary, special tokens, chat template, re-encoding of all MMLU prompts) |
 | `tools/llm/trace_weights.py` | per-tensor SHA-256 comparison of an RNGD artifact's parameters with the pinned Hugging Face weights |
 
@@ -201,7 +237,7 @@ Every file is created exclusively, and `manifest.json` is written last with the 
 `python -m sdv_bmt.llm evaluate RUN_DIR` reads only the bundle. It refuses a bundle whose raw files changed
 and writes a new evaluation directory.
 
-Bundles of MMLU runs contain answer letters and outputs derived from the dataset. They stay local, like the
+Bundles of tinyMMLU (and v1.0 MMLU) runs contain answer letters and log-likelihoods derived from the dataset. They stay local, like the
 COCO, Cityscapes and nuScenes evidence.
 
 ## 7. Limits
@@ -211,6 +247,8 @@ COCO, Cityscapes and nuScenes evidence.
   per run.
 - RNGD prefill runs in 128-token buckets (up to 1,024 tokens). Longer inputs use chunked prefill. The
   locally built 1B/3B artifacts accept at most 2,048 tokens of input plus output.
-- MMLU here is zero-shot and generation-based with a 16-token limit. Outputs that start with an
-  explanation can be unparsable, so the scores are not comparable with published 5-shot log-likelihood
-  MMLU scores.
+- tinyMMLU has 100 items. Its gp-IRT value estimates full-MMLU accuracy with an error of about 0.016 on MMLU in the
+  tinyBenchmarks README; the raw 100-item accuracy moves by 0.01 per item. Near-ties between choices are common in
+  BF16 (log-likelihoods move in steps of about 0.06–0.125), and each GPU–RNGD prediction difference observed so far
+  involves a tie on at least one side.
+- Scores are not comparable with the v1.0 MMLU 1,000-item generation-based scores.

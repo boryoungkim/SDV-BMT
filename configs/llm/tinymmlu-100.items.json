@@ -1,0 +1,514 @@
+{
+  "config": "all",
+  "dataset": "tinyBenchmarks/tinyMMLU",
+  "item_sha256_method": "SHA-256 of canonical JSON {subject, question, choices, answer, input_formatted} (sorted keys, compact separators, UTF-8)",
+  "items": [
+    {
+      "item_id": "test/0",
+      "item_sha256": "151c49d1bbc60feec22ea3c55542dcfa60081d0b1dc1d13a80aa12d6fa8f62ed",
+      "subject": "high_school_statistics"
+    },
+    {
+      "item_id": "test/1",
+      "item_sha256": "6272c852b432db183037f7bdffa631a9d7e48971453b700bbe5ce6f53cc3879c",
+      "subject": "nutrition"
+    },
+    {
+      "item_id": "test/2",
+      "item_sha256": "6399b018c21d55982ab5afe560834cacace485b9ddd55b2268f1db945668d4b4",
+      "subject": "clinical_knowledge"
+    },
+    {
+      "item_id": "test/3",
+      "item_sha256": "eea99d41b84ea9e589d3b0d854022dddd49baa5aa03c4e09f9c80a9be912159b",
+      "subject": "nutrition"
+    },
+    {
+      "item_id": "test/4",
+      "item_sha256": "4abb24689d0b46b32fc666321e7966287fa40446512b8a1af9598158112f12f9",
+      "subject": "high_school_mathematics"
+    },
+    {
+      "item_id": "test/5",
+      "item_sha256": "5a33dda4a47e9722a28048f01bb6ae750e9f36325e60abb14d1c97835104dd84",
+      "subject": "moral_disputes"
+    },
+    {
+      "item_id": "test/6",
+      "item_sha256": "c7b0090ea42805ba3d0234b3c3ea4d3b5dd25886b025a19d635cbf62cda2e49b",
+      "subject": "professional_medicine"
+    },
+    {
+      "item_id": "test/7",
+      "item_sha256": "50930f31c177497c7b43fed0a5c363a5376f0c4a218a4719fdf90dad405407f5",
+      "subject": "prehistory"
+    },
+    {
+      "item_id": "test/8",
+      "item_sha256": "ce275f3a602b7d155f624bbbbf1596d47f5bdb108fd9d737d2e3a23baa56357f",
+      "subject": "business_ethics"
+    },
+    {
+      "item_id": "test/9",
+      "item_sha256": "dff17aee501739749057cd703f2446ccf293a15a34327848c59b33a5a415c270",
+      "subject": "philosophy"
+    },
+    {
+      "item_id": "test/10",
+      "item_sha256": "813ad237fc89940653df7500346a35b5cf92957dbbe6eb5234f01ad8a4c130dc",
+      "subject": "professional_psychology"
+    },
+    {
+      "item_id": "test/11",
+      "item_sha256": "d4643168fb1bee04c62471c137764efa5777f0af40bc849ffce7f64b4056af44",
+      "subject": "professional_accounting"
+    },
+    {
+      "item_id": "test/12",
+      "item_sha256": "6d82e7f1fd677332c84cc009bea224a08b334f6b12b9e7e269ec12761a529846",
+      "subject": "high_school_physics"
+    },
+    {
+      "item_id": "test/13",
+      "item_sha256": "e664c4de663d979faa32de149d3c4f4abcd471d64201fe11abbb41d2046ad3dd",
+      "subject": "abstract_algebra"
+    },
+    {
+      "item_id": "test/14",
+      "item_sha256": "a45846f5d04412a26137d7c33750edd1bd9499a520401094088b988938ebe1af",
+      "subject": "anatomy"
+    },
+    {
+      "item_id": "test/15",
+      "item_sha256": "ac7ca80bea2baa73f37385471ac46d27622ec9a94ce2b90d379eecdedb33583a",
+      "subject": "high_school_world_history"
+    },
+    {
+      "item_id": "test/16",
+      "item_sha256": "d68c05da381b13058ca5f261ca8705c29c449f9e2fe04c7e8195a6f85b675827",
+      "subject": "prehistory"
+    },
+    {
+      "item_id": "test/17",
+      "item_sha256": "ea33bc2bc229515f18848feb9a4a64a54138be66289bee11d1d6270199ce191d",
+      "subject": "college_medicine"
+    },
+    {
+      "item_id": "test/18",
+      "item_sha256": "b6d8c8e9024639f7b085d8ee81fecf020de6989a07f213fa4e719523d60b117d",
+      "subject": "professional_law"
+    },
+    {
+      "item_id": "test/19",
+      "item_sha256": "b09d0b154add856ea69c22baca7e58bbac46f89475ae8d2325c2e5c884a3456e",
+      "subject": "high_school_geography"
+    },
+    {
+      "item_id": "test/20",
+      "item_sha256": "cf5e8b33e74505ba2f494ae742cc3e701ac926c27e80a6f2908a25d65f856e51",
+      "subject": "moral_scenarios"
+    },
+    {
+      "item_id": "test/21",
+      "item_sha256": "f69ef4944d223ada41ceaef5babb4ac845366d03ca1af2dd30049f9ceaff5b26",
+      "subject": "virology"
+    },
+    {
+      "item_id": "test/22",
+      "item_sha256": "08869e2ae9a626412baceef167ced7de5c6d279ca271d0208b1aca5bbbf12cb9",
+      "subject": "elementary_mathematics"
+    },
+    {
+      "item_id": "test/23",
+      "item_sha256": "423de2f2090e6538295f417bde40dd6b4ed1a36ff829ab4b27b9033f8e457676",
+      "subject": "high_school_chemistry"
+    },
+    {
+      "item_id": "test/24",
+      "item_sha256": "c185f31a5b005a51249c3e3cd50a8fcf041c7b451c05fd9293357b2f716fbaed",
+      "subject": "professional_medicine"
+    },
+    {
+      "item_id": "test/25",
+      "item_sha256": "f173b846308b2fe18fbbf940a0185e306af34c28df6c4e10a72b5fde8f5e2ef4",
+      "subject": "moral_scenarios"
+    },
+    {
+      "item_id": "test/26",
+      "item_sha256": "f83e3f8fd45a4d2ab07c98bd11ce03e09b65e509cba23482c71e2949c0d46b48",
+      "subject": "high_school_chemistry"
+    },
+    {
+      "item_id": "test/27",
+      "item_sha256": "03a79522ec894fc609e9821965a494153be077d266adbbc9201691429d2d3d2b",
+      "subject": "professional_medicine"
+    },
+    {
+      "item_id": "test/28",
+      "item_sha256": "2612eb891cdb8221eb71e72bfd0cf6d6e71e9ddd65c21bb344616583144f21ba",
+      "subject": "moral_scenarios"
+    },
+    {
+      "item_id": "test/29",
+      "item_sha256": "c47ca0138da75f43839a7aec4870fca16c46e432ec54c7139c4dba00e9184e8f",
+      "subject": "conceptual_physics"
+    },
+    {
+      "item_id": "test/30",
+      "item_sha256": "ffe4e3b65d6360b615afa1757db4d2d8bef50d10dcd15167d8336522f9a2c3c7",
+      "subject": "professional_psychology"
+    },
+    {
+      "item_id": "test/31",
+      "item_sha256": "bf9cc57161246b67f215a5e0fd218266ce4e87bb8a743491975006e7e7995d13",
+      "subject": "high_school_biology"
+    },
+    {
+      "item_id": "test/32",
+      "item_sha256": "279ae3d38239eca993668cfcda1d55388028989e763c06905c8276c0d5f3d957",
+      "subject": "moral_scenarios"
+    },
+    {
+      "item_id": "test/33",
+      "item_sha256": "4317db5dc92fd4dec3ae7ac2012c062ffa7bb8b07c7e58b3c62a78f1a3183ddd",
+      "subject": "high_school_geography"
+    },
+    {
+      "item_id": "test/34",
+      "item_sha256": "98669cdf578d8c23e744a1f5d35237f366d216609587127c3ba81b31b084a300",
+      "subject": "miscellaneous"
+    },
+    {
+      "item_id": "test/35",
+      "item_sha256": "3c7700a22f670b5c1bb4100e482cee7d0d094c35234bee9d8fd9cf3cdaf4806d",
+      "subject": "electrical_engineering"
+    },
+    {
+      "item_id": "test/36",
+      "item_sha256": "7c6c5ed40cc30763042241ffe11c882f509e6b32bad64e1b0f3e5d38e2e3a7ea",
+      "subject": "security_studies"
+    },
+    {
+      "item_id": "test/37",
+      "item_sha256": "fd53febb8378950b164f40d0d94c398134495c54e23ee14dccc437d3157c2385",
+      "subject": "business_ethics"
+    },
+    {
+      "item_id": "test/38",
+      "item_sha256": "4836436f7c0da81c279695e9fa848d99116fd91b6f402b959c83df1f09046da9",
+      "subject": "conceptual_physics"
+    },
+    {
+      "item_id": "test/39",
+      "item_sha256": "e0c87c05794eaedb92199bf53dc757e4d59e3b8613c96b776fe50b7f9877e7aa",
+      "subject": "high_school_statistics"
+    },
+    {
+      "item_id": "test/40",
+      "item_sha256": "765126bfa93fea6a3ad1d0da74aa0521a5e60d39445a5ca5483bfaa5c733e4a2",
+      "subject": "world_religions"
+    },
+    {
+      "item_id": "test/41",
+      "item_sha256": "4ad9c1f535f16f56f9c582c3674fc28aa5b6351c48b8779ff90df7bbc42488cf",
+      "subject": "moral_scenarios"
+    },
+    {
+      "item_id": "test/42",
+      "item_sha256": "570819c876114a5cf87789bc585b0ea0db6cffac66345e262cd401a0bbd5ee87",
+      "subject": "professional_law"
+    },
+    {
+      "item_id": "test/43",
+      "item_sha256": "e8c3c2f52bef88ad0d98502b2aa44a1320f9dbe7e18d819a7ebda79c8780aba5",
+      "subject": "sociology"
+    },
+    {
+      "item_id": "test/44",
+      "item_sha256": "ee4478ba6372c4bed1b5f88a0b63f234c4bf31501aed9f0093ba32091dddb70e",
+      "subject": "college_mathematics"
+    },
+    {
+      "item_id": "test/45",
+      "item_sha256": "c5961ece129895f6b9fc8081230c3b188509a213ae2eee54c3377835e9a20057",
+      "subject": "nutrition"
+    },
+    {
+      "item_id": "test/46",
+      "item_sha256": "66d2ebe21314b1ca1e2f6da581bf649de66bf5bcc271a0080c4f7ac73f4cc866",
+      "subject": "college_biology"
+    },
+    {
+      "item_id": "test/47",
+      "item_sha256": "2a69bbb3578188de0603db5aca702db04424cb22d8f30aa96415e19c04ee8653",
+      "subject": "college_computer_science"
+    },
+    {
+      "item_id": "test/48",
+      "item_sha256": "363297e707c4da90e369320966a2d7207ce4e221d432f55bc5e33e61f4a34be5",
+      "subject": "high_school_physics"
+    },
+    {
+      "item_id": "test/49",
+      "item_sha256": "11f0694e60c23f3c4f64a76c2170f08bca4c399102922e804a6f7858de6c5991",
+      "subject": "professional_psychology"
+    },
+    {
+      "item_id": "test/50",
+      "item_sha256": "7146572c7e1ffb45d5295d68f8342596db7f9d9b38fe400479e79426fe42881e",
+      "subject": "high_school_government_and_politics"
+    },
+    {
+      "item_id": "test/51",
+      "item_sha256": "3fb6126c566b99fe19c2fd2e421c94f07b518275db27e2d060aee9d3754f191b",
+      "subject": "moral_scenarios"
+    },
+    {
+      "item_id": "test/52",
+      "item_sha256": "766bd7674f7e5b94579f42dfbb0b26797485c19e9bc2739419bf3ed28bfd39ba",
+      "subject": "professional_law"
+    },
+    {
+      "item_id": "test/53",
+      "item_sha256": "d66d02e7e4e649e021fc6bacf6fc71fc7e5a3f4aff28ba54da7fd948d520ee13",
+      "subject": "high_school_government_and_politics"
+    },
+    {
+      "item_id": "test/54",
+      "item_sha256": "d759e3fae20fb818c2c2c3192b4293444239c6070fa3f9f2a0b5fcc10dda7ba2",
+      "subject": "professional_accounting"
+    },
+    {
+      "item_id": "test/55",
+      "item_sha256": "6f46be1ca0ac7165a55f0eb14aa3f01f9dd3450508001cfae703331a5e633f71",
+      "subject": "jurisprudence"
+    },
+    {
+      "item_id": "test/56",
+      "item_sha256": "0e911e1274ee685643eaa541749014bdf580de4b904a10577411867c1fdd830b",
+      "subject": "international_law"
+    },
+    {
+      "item_id": "test/57",
+      "item_sha256": "a6185fa70b8997e83615b42c72af3397bad6ac056e611c89e27004587aa4ad0c",
+      "subject": "international_law"
+    },
+    {
+      "item_id": "test/58",
+      "item_sha256": "db677e2a47e42fe171da0a7ca4185c9da6a59f228176ea50bd769a0ca7e604a2",
+      "subject": "professional_law"
+    },
+    {
+      "item_id": "test/59",
+      "item_sha256": "cca132fa42da55c29eefa687f18a0f8ae96e921e7fcf0f2dac80ede23aed61fb",
+      "subject": "marketing"
+    },
+    {
+      "item_id": "test/60",
+      "item_sha256": "843781d140a24cab45a1e366016d193eb8a6ed498c76fe065701befa9b64eeb6",
+      "subject": "moral_scenarios"
+    },
+    {
+      "item_id": "test/61",
+      "item_sha256": "8c674f2b05298ac2ce60f6690168a7dfe06e26d8eec68bc211ff52d93e470d4b",
+      "subject": "public_relations"
+    },
+    {
+      "item_id": "test/62",
+      "item_sha256": "0124299341e40084d42abe6d64400ef3ee320cf530a27340c94a2101063e5624",
+      "subject": "professional_law"
+    },
+    {
+      "item_id": "test/63",
+      "item_sha256": "e994640900e6fa807322f5f560790f356a54eea9af29f42a6ef73f5e7e4c8b43",
+      "subject": "high_school_psychology"
+    },
+    {
+      "item_id": "test/64",
+      "item_sha256": "1f49f7805c63a2731d128d6d4fe2ac26a27fb9b97fcae30b993f2c1bc4b416c1",
+      "subject": "jurisprudence"
+    },
+    {
+      "item_id": "test/65",
+      "item_sha256": "4478e863dcea22f9461371a7aae2083d6e9ec8c37e4104ca65d36f7b2e45dd1f",
+      "subject": "medical_genetics"
+    },
+    {
+      "item_id": "test/66",
+      "item_sha256": "8edf8bedd1b8eeadd5f4a76d4d23b1062bb55a2c1cf7f11e6467037bad6eda00",
+      "subject": "anatomy"
+    },
+    {
+      "item_id": "test/67",
+      "item_sha256": "b10d9cee6fc354c1fe9e8910aee5cee0ba22a7aa711b503a13b3e9a5dbc871a6",
+      "subject": "human_sexuality"
+    },
+    {
+      "item_id": "test/68",
+      "item_sha256": "547d29569e63f2370d2d6216b7b61d3f01ce9db267d726781453ee41c1ad1375",
+      "subject": "computer_security"
+    },
+    {
+      "item_id": "test/69",
+      "item_sha256": "958429d845197df7615fa18eceda71bf66e49301e1d63d69e63a13b71b05cf82",
+      "subject": "college_computer_science"
+    },
+    {
+      "item_id": "test/70",
+      "item_sha256": "6cae5f95ba06baa11aff86331bd10c929e3869150a58fb72993a22ab97641cf0",
+      "subject": "high_school_world_history"
+    },
+    {
+      "item_id": "test/71",
+      "item_sha256": "a1bde738e2e818911a8055fe2ad454fb228383a39e9de0598e04d5b1d295678c",
+      "subject": "elementary_mathematics"
+    },
+    {
+      "item_id": "test/72",
+      "item_sha256": "c0f7093bd3582eadb4e0f054ee591159cc334ac31835bfe7d5d3f94ed0eb0a6f",
+      "subject": "human_aging"
+    },
+    {
+      "item_id": "test/73",
+      "item_sha256": "803fb1b9406b92f9c070c741426e58b4345476d36f8327b3aa242c52600d9bae",
+      "subject": "high_school_physics"
+    },
+    {
+      "item_id": "test/74",
+      "item_sha256": "63fd08bc038fb5df227cb34bdd8091836650310b944c696b73cd47c94c26e432",
+      "subject": "philosophy"
+    },
+    {
+      "item_id": "test/75",
+      "item_sha256": "f3fff932227999ddaf8ff7d67b09dd0e9229a63158cf6e16f070f123aca2954e",
+      "subject": "professional_law"
+    },
+    {
+      "item_id": "test/76",
+      "item_sha256": "755c3133a2e90b03727dc1b6dc286e5d55ddcd85b57a2c54dc3a7db8a380c7cd",
+      "subject": "high_school_macroeconomics"
+    },
+    {
+      "item_id": "test/77",
+      "item_sha256": "0193f465a538aef2281a706593957310630ccbe9002f92992e109bbafddcb550",
+      "subject": "miscellaneous"
+    },
+    {
+      "item_id": "test/78",
+      "item_sha256": "146254ba030266c035427fef1d5698a0ee0bd23a5d80dee9a005d428aeef5188",
+      "subject": "anatomy"
+    },
+    {
+      "item_id": "test/79",
+      "item_sha256": "841140b84e6d96e554dd8fbc1ccc382189a3b9a0c0c383a7bdf2a9d600f9f9c9",
+      "subject": "philosophy"
+    },
+    {
+      "item_id": "test/80",
+      "item_sha256": "ee9f69f87c389b66dfd96da0289cb24db3b05faf7bce74c797f3690351da6038",
+      "subject": "formal_logic"
+    },
+    {
+      "item_id": "test/81",
+      "item_sha256": "16e0a1d1716a99d12e93c52d238c95c6bf2f0c329a7e96651eb15824f2f55ffe",
+      "subject": "professional_medicine"
+    },
+    {
+      "item_id": "test/82",
+      "item_sha256": "6ce05e42c1f3c00df8b69e52961801538dba9da97890049ca75b27553da26707",
+      "subject": "prehistory"
+    },
+    {
+      "item_id": "test/83",
+      "item_sha256": "8b747b4f778ec52f545f4e1980af44c52ec781c208602aec99618e02edcb845a",
+      "subject": "elementary_mathematics"
+    },
+    {
+      "item_id": "test/84",
+      "item_sha256": "e70ac191044d449e6c821b7bd2a84c1d65698bfd6cf143afb3a6222533fada9b",
+      "subject": "high_school_psychology"
+    },
+    {
+      "item_id": "test/85",
+      "item_sha256": "d78954ae3d8e03113f25dd54507b11bdc7902324338617ab8c2da6b65d3cebcf",
+      "subject": "us_foreign_policy"
+    },
+    {
+      "item_id": "test/86",
+      "item_sha256": "007ac2f8e0e48bf7e3e9fc3b751f7e4852985bad7b5108527db1434975669814",
+      "subject": "prehistory"
+    },
+    {
+      "item_id": "test/87",
+      "item_sha256": "52bbf06919b780af55e63b31f4395b364ce5902b748f04ed26e41a415cfc63f2",
+      "subject": "professional_law"
+    },
+    {
+      "item_id": "test/88",
+      "item_sha256": "28cda31b5b43baea50b8f95889c67ae3194f211698fe24e3a7ac03d12885e19b",
+      "subject": "nutrition"
+    },
+    {
+      "item_id": "test/89",
+      "item_sha256": "f929281b1750a9b4e43a38d8ca8ccf6ae6534bc969975bea2be6a23ea83eb169",
+      "subject": "human_sexuality"
+    },
+    {
+      "item_id": "test/90",
+      "item_sha256": "89fd45b927793f124f04c245ce9e8d77a8015e5be6341215ab13b7b54068acb1",
+      "subject": "prehistory"
+    },
+    {
+      "item_id": "test/91",
+      "item_sha256": "c168b99a8a62b8d87c0342547837a522ef3ef69256d77466ddf62bb3e125f841",
+      "subject": "international_law"
+    },
+    {
+      "item_id": "test/92",
+      "item_sha256": "f6440a4f3283d11baaa5c6ed98063ceab86f60b5fce6368b640c89f1f3345ea8",
+      "subject": "miscellaneous"
+    },
+    {
+      "item_id": "test/93",
+      "item_sha256": "56a0c30adbf3ee730a23be2c8fcba1e3c1bd106ed591cab43b47cce5ad914053",
+      "subject": "professional_law"
+    },
+    {
+      "item_id": "test/94",
+      "item_sha256": "d82250fdb9a72ec296e8edc69e3c1c3ef5e04cffdde79126c64aea3b6c6a9f2b",
+      "subject": "high_school_european_history"
+    },
+    {
+      "item_id": "test/95",
+      "item_sha256": "678691ddcdd7b0906db3d628c7e64140e3d4c6acc78e9a4633dab5e0dcbab3e4",
+      "subject": "college_biology"
+    },
+    {
+      "item_id": "test/96",
+      "item_sha256": "ed6c33902c77656d5487a58c93c6819c0c4f76d93f52e4ee37c5d33c4d6dded8",
+      "subject": "professional_medicine"
+    },
+    {
+      "item_id": "test/97",
+      "item_sha256": "00b1f12b9d1f8527fc9869e6e526551f9e70dbe82125f751e0ce3dd20bb7adf9",
+      "subject": "formal_logic"
+    },
+    {
+      "item_id": "test/98",
+      "item_sha256": "a4953228eab547a51340456965697f2489ea28be377ad5d0766c51598372c6c2",
+      "subject": "high_school_chemistry"
+    },
+    {
+      "item_id": "test/99",
+      "item_sha256": "b3c730adf668e88645dfd8e160256d8791b9b76439a6bdcce0b06e371e7b5d80",
+      "subject": "high_school_physics"
+    }
+  ],
+  "label": "tinyMMLU 100 items (lm-evaluation-harness tinyMMLU: log-likelihood of ' A'..' D', acc_norm)",
+  "revision": "cd6a8ee9e1e6f3f18f683535f6c096c386a85da3",
+  "selection": "all items of the split, in dataset order (the order tinyBenchmarks expects)",
+  "source_file": "all/test-00000-of-00001.parquet",
+  "source_file_sha256": "256f81ffdd6e64699df096c02afafba33626bfca08baed484c275e351993f317",
+  "source_item_count": 100,
+  "split": "test"
+}

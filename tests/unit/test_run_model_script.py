@@ -33,11 +33,11 @@ case $1 in
 esac
 """
 STUB_LLM = """#!/usr/bin/env bash
-# tools/llm/run_baselines.sh DEVICE MODEL with OUT and REPS: REPS speed runs and one MMLU run of that device
+# tools/llm/run_baselines.sh DEVICE MODEL with OUT and REPS: REPS speed runs and one tinyMMLU run of that device
 case $1 in gpu) s=gpu0-vllm ;; rngd) s=rngd-furiosa ;; esac
 log=$OUT/baseline-$1-$(date +%s%N).log
 for i in $(seq 1 "$REPS"); do mkdir -p "$OUT/$2.$s.speed/run-$i"; echo '{"run_status": "completed"}' >> "$log"; done
-mkdir -p "$OUT/$2.$s.mmlu/run-1"; echo '{"run_status": "completed"}' >> "$log"
+mkdir -p "$OUT/$2.$s.tinymmlu/run-1"; echo '{"run_status": "completed"}' >> "$log"
 """
 STUB_LLM_TABLE = """#!/usr/bin/env bash
 args="$*"; while [ "$1" != "--out" ]; do shift; done
@@ -115,7 +115,7 @@ def test_dry_run_checks_every_configuration_and_writes_nothing(tmp_path):
     assert _datasets(proc.stdout) == [  # under the models line, each once, as the result table writes them
         "coco-val2017-first1000-416 (1,000 items)", "coco-val2017-first1000 (1,000 items)",
         "cityscapes-val500 (500 items)", "nuscenes-mini-val4 (162 items)", "nuscenes-val (6,019 items)",
-        "speed-s1-s5 (synthetic token IDs)", "mmlu-1000 (1,000 items)"]
+        "speed-s1-s5 (synthetic token IDs)", "tinymmlu-100 (100 items)"]
 
 
 def test_flow_with_stub_commands_refuses_existing_runs_and_a_held_marker(tmp_path):
@@ -203,11 +203,11 @@ def test_rngd_dry_run_runs_the_rngd_card_only(tmp_path):
         proc = _run([name, "--dry-run"], {"R": str(tmp_path / "bench")})
         assert proc.returncode == 0, proc.stdout + proc.stderr
         assert f"run_baselines.sh rngd {base}" in proc.stdout and "run_baselines.sh gpu" not in proc.stdout
-        assert f"llm/{base}.rngd-furiosa.speed" in proc.stdout and f"llm/{base}.rngd-furiosa.mmlu" in proc.stdout
+        assert f"llm/{base}.rngd-furiosa.speed" in proc.stdout and f"llm/{base}.rngd-furiosa.tinymmlu" in proc.stdout
         assert "gpu0-vllm" not in proc.stdout and f"tables/{name}.metrics.csv" in proc.stdout
-        for kind in ("speed", "mmlu"):
+        for kind in ("speed", "tinymmlu"):
             assert (REPO_ROOT / f"configs/llm/experiments/{base}.rngd-furiosa.{kind}.yaml").is_file()
-        assert _datasets(proc.stdout) == ["speed-s1-s5 (synthetic token IDs)", "mmlu-1000 (1,000 items)"]
+        assert _datasets(proc.stdout) == ["speed-s1-s5 (synthetic token IDs)", "tinymmlu-100 (100 items)"]
     assert not (tmp_path / "bench").exists()
 
 
@@ -220,17 +220,18 @@ def test_llama_flow_one_device_per_name_and_existing_runs_refused_per_device(tmp
            "LLM_BASELINES": str(tmp_path / "run_baselines.sh"), **{k: str(tmp_path / k.lower()) for k in LLM_ENV}}
     rngd = _run(["llama-3.2-1b-instruct-rngd"], env)
     assert rngd.returncode == 0, rngd.stdout + rngd.stderr
-    assert "llama-3.2-1b-instruct-rngd: rngd (speed 2 runs + MMLU 1 run)" in rngd.stdout
+    assert "llama-3.2-1b-instruct-rngd: rngd (speed 2 runs + tinyMMLU 1 run)" in rngd.stdout
+    assert "llama-3.2-1b-instruct-rngd: gp-IRT not computed (set LMEVAL_PY and TINYMMLU_IRT_PKL" in rngd.stdout
     assert "llama-3.2-1b-instruct-rngd: 3/3 runs completed" in rngd.stdout
     assert len(list((out / "llm").glob("llama-3.2-1b-instruct.rngd-furiosa.speed/run-*"))) == 2
     assert not list((out / "llm").glob("*.gpu0-vllm.*"))
     table = (out / "tables" / "llama-3.2-1b-instruct-rngd.metrics.csv").read_text()
-    assert "rngd-furiosa.speed" in table and "rngd-furiosa.mmlu" in table and "gpu0-vllm" not in table
+    assert "rngd-furiosa.speed" in table and "rngd-furiosa.tinymmlu" in table and "gpu0-vllm" not in table
     gpu = _run(["llama-3.2-1b-instruct"], env)  # the RNGD runs of the model in the same R do not block the GPU
     assert gpu.returncode == 0, gpu.stdout + gpu.stderr
-    assert "llama-3.2-1b-instruct: gpu (speed 2 runs + MMLU 1 run)" in gpu.stdout
+    assert "llama-3.2-1b-instruct: gpu (speed 2 runs + tinyMMLU 1 run)" in gpu.stdout
     table = (out / "tables" / "llama-3.2-1b-instruct.metrics.csv").read_text()
-    assert "gpu0-vllm.speed" in table and "gpu0-vllm.mmlu" in table and "rngd-furiosa" not in table
+    assert "gpu0-vllm.speed" in table and "gpu0-vllm.tinymmlu" in table and "rngd-furiosa" not in table
     again = _run(["llama-3.2-1b-instruct-rngd"], env)
     assert again.returncode == 3 and "already has runs of llama-3.2-1b-instruct.rngd-furiosa" in again.stdout
 

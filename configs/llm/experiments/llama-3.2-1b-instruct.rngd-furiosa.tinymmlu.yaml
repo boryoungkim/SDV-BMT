@@ -1,0 +1,20 @@
+# LLM tinymmlu run: llama-3.2-1b-instruct on rngd-furiosa. RNGD npu:0, furiosa-llm 2026.3, artifact built locally from the pinned HF revision with max_model_len 4096 (tools/llm/rngd_build.py --max-model-len 4096; the 2048 artifact of the speed runs cannot hold the longest tinyMMLU prompt, 3,029 tokens).
+# Host paths come from SDV_BMT_MODELS / SDV_BMT_DATASETS / SDV_BMT_CACHE (see docs/llm_benchmark.md).
+schema: sdv-bmt-llm-run/1
+experiment_id: llama-3.2-1b-instruct.rngd-furiosa.tinymmlu
+execution_kind: actual
+model:
+  name: llama-3.2-1b-instruct
+  hf_id: meta-llama/Llama-3.2-1B-Instruct
+  revision: 9213176726f574b556790deb65791e0c5aa438b6
+  tokenizer_path: "${SDV_BMT_MODELS}/llama-3.2-1b-instruct"
+backend:
+  kind: furiosa
+  options: {model: "${SDV_BMT_MODELS}/rngd/llama-3.2-1b-instruct-fl2026.3-4k", devices: "npu:0", cache_dir: "${SDV_BMT_CACHE}/furiosa-llm"}
+device: {kind: rngd, name: FuriosaAI RNGD, index: 0}
+workload:
+  kind: tinymmlu
+  file: "${SDV_BMT_DATASETS}/tinymmlu-100/llama-3.2-1b-instruct.prompts.jsonl"
+  sha256: 9b3436e1166390acb211a55ded21d97e0e5094b4539d17118f1d7a9c1267b00c
+  items_file: ../tinymmlu-100.items.json
+  warmup: 3

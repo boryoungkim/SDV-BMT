@@ -4,12 +4,16 @@
     prepare-mmlu  --parquet P --tokenizer DIR --items FILE --prompts-out FILE
                                                   select the 1,000 items, write the public item list (IDs +
                                                   SHA-256, no text) and the local prompt token-ID file
+    prepare-tinymmlu --parquet P --tokenizer DIR --items FILE --prompts-out FILE --revision REV
+                                                  the 100 tinyMMLU items: public item list (IDs + SHA-256, no
+                                                  text) and the local request file (4 choice requests per item)
     lengths PROMPTS [--max-model-len N]           token-length coverage of a prompt file
     run CONFIG [--out DIR]                        one run -> one bundle
     evaluate RUN_DIR                              bundle-only evaluation (catalog sdv-bmt-llm-v1)
-    compare REF_RUN OTHER_RUN --out FILE          MMLU per-item comparison (reference = GPU)
+    compare REF_RUN OTHER_RUN --out FILE          MMLU / tinyMMLU per-item comparison (reference = GPU)
     aggregate RUN_DIR... --out FILE               speed statistics over several evaluated runs
-    table EXPERIMENT_DIR... --out FILE.csv        metric table (docs/metric_table.md): representative metrics
+    table EXPERIMENT_DIR... --out FILE.csv [--irt IRT.json ...]
+                                                  metric table (docs/metric_table.md): representative metrics
                                                   under readable names first, then the overall result per
                                                   metric, then one row per run and metric; the representative
                                                   metrics are also printed (stderr)
@@ -30,7 +34,7 @@ from typing import Optional, Sequence
 
 from ..contracts.ids import pretty_json_bytes, utc_now_iso
 from ..metrics.table import HEADLINE_ROW, MODEL_ROW, format_console
-from . import mmlu
+from . import mmlu, tinymmlu
 from .evaluate import evaluate, latest_metrics, stats, verify_bundle
 from .runner import run_once
 from .table import LlmReportError, write_table
@@ -94,6 +98,50 @@ def cmd_prepare_mmlu(parquet: str, tokenizer: str, items_path: str, prompts_out:
     return 0
 
 
+def cmd_prepare_tinymmlu(parquet: str, tokenizer: str, items_path: str, prompts_out: str, revision: str) -> int:
+    import pyarrow.parquet as pq
+    from transformers import AutoTokenizer
+
+    rows = [tinymmlu.canonical_item(r) for r in pq.read_table(parquet).to_pylist()]
+    if len(rows) != tinymmlu.TINYMMLU_TOTAL:
+        print(f"error: {parquet} has {len(rows)} items, expected {tinymmlu.TINYMMLU_TOTAL}", file=sys.stderr)
+        return 2
+    items = {
+        "dataset": tinymmlu.TINYMMLU_DATASET, "config": tinymmlu.TINYMMLU_CONFIG, "split": tinymmlu.TINYMMLU_SPLIT,
+        "revision": revision, "source_file": "all/test-00000-of-00001.parquet",
+        "source_file_sha256": file_sha256(Path(parquet)), "source_item_count": len(rows),
+        "selection": "all items of the split, in dataset order (the order tinyBenchmarks expects)",
+        "item_sha256_method": "SHA-256 of canonical JSON {subject, question, choices, answer, input_formatted} "
+                              "(sorted keys, compact separators, UTF-8)",
+        "label": tinymmlu.EVALUATION_LABEL,
+        "items": [{"item_id": f"test/{i}", "subject": r["subject"], "item_sha256": tinymmlu.item_sha256(r)}
+                  for i, r in enumerate(rows)],
+    }
+    ip = Path(items_path)
+    if ip.exists():
+        existing = json.loads(ip.read_text(encoding="utf-8"))
+        if existing["items"] != items["items"] or existing["source_file_sha256"] != items["source_file_sha256"]:
+            print(f"error: {ip} exists with different items", file=sys.stderr)
+            return 2
+    else:
+        _write_x(ip, items)
+    tok = AutoTokenizer.from_pretrained(tokenizer)
+    out_rows = []
+    for i, r in enumerate(rows):
+        for q in tinymmlu.item_requests(tok, r):
+            ids = q["input_token_ids"]
+            out_rows.append({"item_id": f"test/{i}", "request_key": q["choice"], "subject": r["subject"],
+                             "answer": tinymmlu.CHOICES[r["answer"]], "item_sha256": tinymmlu.item_sha256(r),
+                             "input_token_ids": ids, "input_token_ids_sha256": token_ids_sha256(ids),
+                             "score_from": q["continuation_start"]})
+    Path(prompts_out).parent.mkdir(parents=True, exist_ok=True)
+    write_jsonl(Path(prompts_out), out_rows)
+    tj = Path(tokenizer) / "tokenizer.json"
+    print(json.dumps({"items": items_path, "prompts": prompts_out, "prompts_sha256": file_sha256(Path(prompts_out)),
+                      "tokenizer_json_sha256": file_sha256(tj) if tj.exists() else None, "requests": len(out_rows)}))
+    return 0
+
+
 def cmd_lengths(prompts: str, max_model_len: Optional[int], max_new: int) -> int:
     lens = [len(r["input_token_ids"]) for r in read_jsonl(Path(prompts))]
     s = sorted(lens)
@@ -111,11 +159,15 @@ def cmd_compare(ref_run: str, other_run: str, out: str) -> int:
     a, b = latest_metrics(Path(ref_run)), latest_metrics(Path(other_run))
     verify_bundle(Path(ref_run)), verify_bundle(Path(other_run))
     if "quality" not in a or "quality" not in b:
-        print("error: both runs must be evaluated MMLU runs", file=sys.stderr)
+        print("error: both runs must be evaluated MMLU or tinyMMLU runs", file=sys.stderr)
+        return 2
+    if a["quality"].get("label") != b["quality"].get("label"):
+        print("error: the two runs use different quality evaluations", file=sys.stderr)
         return 2
     ha, hb = a["quality"]["input_token_ids_sha256"], b["quality"]["input_token_ids_sha256"]
     same_ids = ha == hb
-    res = mmlu.compare(a["quality"], b["quality"])
+    module = tinymmlu if a["quality"].get("scoring_rule") == tinymmlu.SCORING_RULE_ID else mmlu
+    res = module.compare(a["quality"], b["quality"])
     res.update({"reference_run": ref_run, "other_run": other_run, "reference_eval": a["eval_id"],
                 "other_eval": b["eval_id"], "prompt_token_ids_identical": same_ids,
                 "prompt_token_ids_differing_items": [k for k in ha if ha.get(k) != hb.get(k)][:20],
@@ -155,9 +207,9 @@ def cmd_aggregate(run_dirs: Sequence[str], out: str) -> int:
     return 0
 
 
-def cmd_table(exp_dirs: Sequence[str], out: str) -> int:
+def cmd_table(exp_dirs: Sequence[str], out: str, irt: Sequence[str] = ()) -> int:
     try:
-        rows, data = write_table(exp_dirs, out)
+        rows, data = write_table(exp_dirs, out, irt)
     except (LlmReportError, FileExistsError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -176,6 +228,9 @@ def build_parser() -> argparse.ArgumentParser:
     m = sub.add_parser("prepare-mmlu")
     for a in ("--parquet", "--tokenizer", "--items", "--prompts-out", "--revision"):
         m.add_argument(a, required=True)
+    tm = sub.add_parser("prepare-tinymmlu")
+    for a in ("--parquet", "--tokenizer", "--items", "--prompts-out", "--revision"):
+        tm.add_argument(a, required=True)
     ln = sub.add_parser("lengths"); ln.add_argument("prompts"); ln.add_argument("--max-model-len", type=int)
     ln.add_argument("--max-new", type=int, default=mmlu.MAX_NEW_TOKENS)
     r = sub.add_parser("run"); r.add_argument("config"); r.add_argument("--out", default="runs")
@@ -183,6 +238,7 @@ def build_parser() -> argparse.ArgumentParser:
     c = sub.add_parser("compare"); c.add_argument("ref_run"); c.add_argument("other_run"); c.add_argument("--out", required=True)
     g = sub.add_parser("aggregate"); g.add_argument("run_dirs", nargs="+"); g.add_argument("--out", required=True)
     t = sub.add_parser("table"); t.add_argument("exp_dirs", nargs="+"); t.add_argument("--out", required=True)
+    t.add_argument("--irt", action="append", default=[], help="result file of tools/llm/tinymmlu_irt.py (repeatable)")
     return p
 
 
@@ -192,6 +248,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return cmd_prepare_speed(a.out)
     if a.cmd == "prepare-mmlu":
         return cmd_prepare_mmlu(a.parquet, a.tokenizer, a.items, a.prompts_out, a.revision)
+    if a.cmd == "prepare-tinymmlu":
+        return cmd_prepare_tinymmlu(a.parquet, a.tokenizer, a.items, a.prompts_out, a.revision)
     if a.cmd == "lengths":
         return cmd_lengths(a.prompts, a.max_model_len, a.max_new)
     if a.cmd == "run":
@@ -205,7 +263,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if a.cmd == "compare":
         return cmd_compare(a.ref_run, a.other_run, a.out)
     if a.cmd == "table":
-        return cmd_table(a.exp_dirs, a.out)
+        return cmd_table(a.exp_dirs, a.out, a.irt)
     return cmd_aggregate(a.run_dirs, a.out)
 
 

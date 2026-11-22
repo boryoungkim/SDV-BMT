@@ -1,7 +1,7 @@
-# LLM mmlu run: llama-3.1-8b-instruct on gpu0-vllm. GPU 0 only, vLLM 0.31.0 tools environment, BF16 weights as distributed.
+# LLM tinymmlu run: llama-3.1-8b-instruct on gpu0-vllm. GPU 0 only, vLLM 0.31.0 tools environment, BF16 weights as distributed.
 # Host paths come from SDV_BMT_MODELS / SDV_BMT_DATASETS / SDV_BMT_CACHE (see docs/llm_benchmark.md).
 schema: sdv-bmt-llm-run/1
-experiment_id: llama-3.1-8b-instruct.gpu0-vllm.mmlu
+experiment_id: llama-3.1-8b-instruct.gpu0-vllm.tinymmlu
 execution_kind: actual
 model:
   name: llama-3.1-8b-instruct
@@ -13,8 +13,8 @@ backend:
   options: {model_path: "${SDV_BMT_MODELS}/llama-3.1-8b-instruct", gpu_memory_utilization: 0.5, max_model_len: 4096, seed: 0}
 device: {kind: gpu, name: NVIDIA RTX PRO 6000 Blackwell, index: 0, selection: CUDA_VISIBLE_DEVICES=0}
 workload:
-  kind: mmlu
-  file: "${SDV_BMT_DATASETS}/mmlu-1000/llama-3.1-8b-instruct.prompts.jsonl"
-  sha256: b0129415cc1b683a936b07fcdf92e1c64ecb13b5f1d2e8cc4ca6c01e7ea907c3
-  items_file: ../mmlu-1000.items.json
+  kind: tinymmlu
+  file: "${SDV_BMT_DATASETS}/tinymmlu-100/llama-3.1-8b-instruct.prompts.jsonl"
+  sha256: 9b3436e1166390acb211a55ded21d97e0e5094b4539d17118f1d7a9c1267b00c
+  items_file: ../tinymmlu-100.items.json
   warmup: 3
