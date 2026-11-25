@@ -69,6 +69,38 @@ def test_score_takes_the_first_maximum_and_separates_missing():
     assert full["complete"] and tinymmlu.compare(full, full)["verdict"] == "pass"
 
 
+def _q(rows):
+    """score() result from {item_id: (answer index, [scores A..D])}."""
+    items = [{"item_id": k, "answer": ans} for k, (ans, _s) in rows.items()]
+    outputs = {k: {c: {"status": "completed", "continuation_logprobs": [v]} for c, v in zip("ABCD", s)}
+               for k, (_a, s) in rows.items()}
+    return tinymmlu.score(items, outputs)
+
+
+def test_compare_judges_clear_items_and_only_counts_near_ties():
+    gpu = _q({"clear": (0, [-0.5, -2.0, -3.0, -4.0]),       # gap 1.5: clear
+              "tie": (1, [-1.0, -0.875, -2.0, -3.0])})     # gap 0.125: near-tie
+    # the near-tie item flips on the other side (B and A equal -> A): reported, not judged
+    rngd = _q({"clear": (0, [-0.5, -2.0, -3.0, -4.0]), "tie": (1, [-0.9, -0.9, -2.0, -3.0])})
+    c = tinymmlu.compare(gpu, rngd)
+    assert c["verdict"] == "pass" and c["accuracy_difference"] == -0.5
+    assert c["counts"]["clear_items"] == 1 and c["counts"]["near_tie_items"] == 1
+    assert c["counts"]["near_tie_prediction_mismatch"] == 1 and c["counts"]["clear_prediction_mismatch"] == 0
+    assert [d["item_id"] for d in c["differing_items"]] == ["tie"] and c["differing_items"][0]["kind"] == "near_tie"
+    assert c["differing_items"][0]["other"]["top_gap"] == 0.0 and "1 of the 1 near-tie" in c["summary"]
+    # a clear item that changes its answer fails, even when the totals are equal
+    swapped = _q({"clear": (0, [-3.0, -0.5, -2.0, -4.0]), "tie": (1, [-1.0, -0.875, -2.0, -3.0])})
+    f = tinymmlu.compare(gpu, swapped)
+    assert f["verdict"] == "fail" and f["counts"]["clear_prediction_mismatch"] == 1
+    # the gap boundary is inclusive: exactly NEAR_TIE_GAP counts as near-tie
+    edge = _q({"clear": (0, [-0.5, -0.5 - tinymmlu.NEAR_TIE_GAP, -3.0, -4.0]), "tie": (1, [-1.0, -0.875, -2.0, -3.0])})
+    assert tinymmlu.compare(edge, edge)["counts"]["near_tie_items"] == 2
+    # an unscored item leaves the comparison unjudged
+    part = tinymmlu.score([{"item_id": "clear", "answer": 0}, {"item_id": "tie", "answer": 1}],
+                          {"clear": {c: {"status": "completed", "continuation_logprobs": [-1.0]} for c in "ABCD"}})
+    assert tinymmlu.compare(gpu, part)["verdict"] == "not_judged_incomplete"
+
+
 def test_actual_token_logprobs_reads_both_runtime_shapes():
     class LP:
         def __init__(self, v):

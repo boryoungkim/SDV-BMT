@@ -85,9 +85,37 @@ toward the first choice) and a one-step BF16 margin (0.125) on the other. The ha
 only its batching and prefix-caching settings change. On 100 items, expect 1–3 items (about 0.006 in gp-IRT)
 between implementations or execution settings.
 
-The GPU–RNGD comparison (`python -m sdv_bmt.llm compare`) reports the accuracy difference, the per-item prediction
-differences and the largest log-likelihood difference. The pass rule carried over from the MMLU 1,000-item set
-(|accuracy difference| ≤ 0.01) allows one item of 100 here and is under review.
+#### GPU–RNGD comparison: the near-tie rule
+
+`python -m sdv_bmt.llm compare <GPU run> <RNGD run>` checks whether the two systems compute the same answers.
+
+Why a plain score difference is not enough: each choice gets a score, and the highest score is the answer. In BF16
+the scores move in steps (0.0625–0.125 for these models), and two systems can land one step apart. When the best two
+choices are that close, one step decides the answer. Example (Llama 3.2 1B, item `test/16`):
+
+| System | A | B | gap between the best two | answer |
+|---|---|---|---|---|
+| GPU | −1.0327 | −0.9077 | 0.125 | B |
+| RNGD | −0.9839 | −0.9839 | 0 (tie: the first choice wins) | A |
+
+Such answer changes say nothing about whether the computation is right; the same GPU changes them when only the
+harness's batching settings change.
+
+The rule:
+
+1. An item is **near-tie** when, on either system, the best and second-best scores are at most 0.25 apart (two
+   steps). Every other scored item is **clear**.
+2. **Pass** when the two systems give the same answer on every clear item; **fail** when one clear answer differs.
+3. Near-tie items are counted and listed with both systems' scores, not judged.
+
+The result also keeps the plain numbers (accuracy difference, items answered differently, largest score difference)
+and a one-line summary, for example `pass: on the 81 items where both sides rank the best choice clearly
+(gap > 0.25), 0 answers differ; 4 of the 19 near-tie items differ`. The 0.25 gap fits the step size of these BF16
+models; check it again for a model whose scores move in larger steps, or for a system that computes in lower
+precision (INT8 / FP8), where clear answers can change on purpose and a quality tolerance is the right question.
+
+Reference results (commit runs, 2026-11-25): Llama 3.2 1B / 3B and Llama 3.1 8B pass, with 71 / 79 / 81 clear items
+and 0 differing clear answers; 2 / 3 / 4 of the 29 / 21 / 19 near-tie items differ.
 
 The v1.0 quality workload, MMLU 1,000 items with a generation-based evaluation (`cais/mmlu`, subject-proportional
 selection, chat template, answer-letter extraction), was replaced by tinyMMLU. Its code (`sdv_bmt.llm.mmlu`,

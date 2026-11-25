@@ -40,6 +40,9 @@ SCORING_RULE_ID = "tinymmlu-harness-mc/1"
 TB_COMMIT = "e9a8b1031b0340571beb6c9ca3a27891be09a8fd"
 IRT_PKL_SHA256 = "c3b6e426dfe7b100fe6d0ee960398e10a8763254bcead3be80cc6bc15abca284"
 IRT_RESULT_TOOL = "tools/llm/tinymmlu_irt.py"
+# GPU-RNGD comparison: choice scores of these BF16 runs move in steps of 0.0625-0.125 between implementations; an item
+# whose best two choices are within two such steps (0.25) on either side is near-tie (see ``compare``)
+NEAR_TIE_GAP = 0.25
 
 
 def canonical_item(row: dict[str, Any]) -> dict[str, Any]:
@@ -121,42 +124,82 @@ def score(items: Sequence[dict[str, Any]], outputs: dict[str, dict[str, dict[str
     }
 
 
-def compare(reference: dict[str, Any], other: dict[str, Any], threshold: float = 0.01) -> dict[str, Any]:
-    """Per-item comparison of two ``score`` results on the same item list (reference = GPU)."""
+def top_gap(loglikelihood: dict[str, Optional[float]]) -> Optional[float]:
+    """Score gap between the best and the second-best choice (0 = tie); None when a choice has no score."""
+    values = [loglikelihood.get(c) for c in CHOICES]
+    if any(v is None for v in values):
+        return None
+    top = sorted(values, reverse=True)
+    return float(top[0] - top[1])
+
+
+def compare(reference: dict[str, Any], other: dict[str, Any], near_tie_gap: float = NEAR_TIE_GAP) -> dict[str, Any]:
+    """Per-item comparison of two ``score`` results on the same item list (reference = GPU), with the near-tie rule.
+
+    An item is *near-tie* when, on either side, the best and second-best choice scores are at most ``near_tie_gap``
+    apart: there a rounding difference alone can change the answer.  The other scored items are *clear*.  The verdict
+    is ``pass`` when the two sides give the same answer on every clear item, ``fail`` otherwise; near-tie items are
+    counted and listed, not judged.  The plain counts (accuracy difference, answer flips) stay in the result.
+    """
     ref = {p["item_id"]: p for p in reference["per_item"]}
     oth = {p["item_id"]: p for p in other["per_item"]}
     if list(ref) != list(oth):
         raise ValueError("the two results do not cover the same item list")
     n = {"ref_correct_other_wrong": 0, "ref_wrong_other_correct": 0, "prediction_mismatch": 0,
-         "ref_not_scored": 0, "other_not_scored": 0}
+         "ref_not_scored": 0, "other_not_scored": 0,
+         "clear_items": 0, "clear_prediction_mismatch": 0, "near_tie_items": 0, "near_tie_prediction_mismatch": 0}
     max_abs = 0.0
+    differing = []
     for k, a in ref.items():
         b = oth[k]
         if a["outcome"] == "correct" and b["outcome"] != "correct":
             n["ref_correct_other_wrong"] += 1
         if a["outcome"] != "correct" and b["outcome"] == "correct":
             n["ref_wrong_other_correct"] += 1
-        if a["predicted"] is not None and b["predicted"] is not None and a["predicted"] != b["predicted"]:
-            n["prediction_mismatch"] += 1
         n["ref_not_scored"] += a["predicted"] is None
         n["other_not_scored"] += b["predicted"] is None
         for letter in CHOICES:
             x, y = a["loglikelihood"].get(letter), b["loglikelihood"].get(letter)
             if x is not None and y is not None:
                 max_abs = max(max_abs, abs(x - y))
+        if a["predicted"] is None or b["predicted"] is None:
+            continue
+        gap_a, gap_b = top_gap(a["loglikelihood"]), top_gap(b["loglikelihood"])
+        near_tie = min(gap_a, gap_b) <= near_tie_gap
+        n["near_tie_items" if near_tie else "clear_items"] += 1
+        if a["predicted"] != b["predicted"]:
+            n["prediction_mismatch"] += 1
+            n["near_tie_prediction_mismatch" if near_tie else "clear_prediction_mismatch"] += 1
+            differing.append({"item_id": k, "kind": "near_tie" if near_tie else "clear", "answer": a["answer"],
+                              "reference": {"predicted": a["predicted"], "top_gap": gap_a,
+                                            "scores": [a["loglikelihood"][c] for c in CHOICES]},
+                              "other": {"predicted": b["predicted"], "top_gap": gap_b,
+                                        "scores": [b["loglikelihood"][c] for c in CHOICES]}})
     complete = reference["complete"] and other["complete"]
     diff = (other["accuracy"] - reference["accuracy"]) if complete else None
+    if not complete:
+        verdict = "not_judged_incomplete"
+        summary = "not judged: an item was not scored on one side"
+    else:
+        verdict = "pass" if n["clear_prediction_mismatch"] == 0 else "fail"
+        summary = (f"{verdict}: on the {n['clear_items']} items where both sides rank the best choice clearly "
+                   f"(gap > {near_tie_gap}), {n['clear_prediction_mismatch']} answers differ; "
+                   f"{n['near_tie_prediction_mismatch']} of the {n['near_tie_items']} near-tie items differ "
+                   f"(not judged: there rounding alone can change the answer)")
     return {
         "label": EVALUATION_LABEL,
-        "criterion": f"|accuracy(other) - accuracy(reference)| <= {threshold} on this fixed item set "
-                     "(total-quality difference only; not numerical equivalence or per-item identity)",
+        "criterion": (f"near-tie rule: an item is near-tie when the best and second-best choice scores are at most "
+                      f"{near_tie_gap} apart on either side; pass when both sides give the same answer on every "
+                      "other (clear) item. Near-tie items are counted, not judged. Not a statement of numerical "
+                      "equivalence"),
+        "near_tie_gap": near_tie_gap,
         "complete": complete,
+        "verdict": verdict,
+        "summary": summary,
         "reference_accuracy": reference["accuracy"],
         "other_accuracy": other["accuracy"],
         "accuracy_difference": diff,
-        "verdict": ("not_judged_incomplete" if not complete else
-                    "pass" if abs(Fraction(other["counts"]["correct"] - reference["counts"]["correct"],
-                                           reference["total"])) <= Fraction(str(threshold)) else "fail"),
         "max_abs_loglikelihood_difference": max_abs,
         "counts": n,
+        "differing_items": differing,
     }

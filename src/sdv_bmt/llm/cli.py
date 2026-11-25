@@ -10,7 +10,8 @@
     lengths PROMPTS [--max-model-len N]           token-length coverage of a prompt file
     run CONFIG [--out DIR]                        one run -> one bundle
     evaluate RUN_DIR                              bundle-only evaluation (catalog sdv-bmt-llm-v1)
-    compare REF_RUN OTHER_RUN --out FILE          MMLU / tinyMMLU per-item comparison (reference = GPU)
+    compare REF_RUN OTHER_RUN --out FILE          MMLU / tinyMMLU per-item comparison (reference = GPU); tinyMMLU:
+                                                  near-tie rule (judged on the items both sides answer clearly)
     aggregate RUN_DIR... --out FILE               speed statistics over several evaluated runs
     table EXPERIMENT_DIR... --out FILE.csv [--irt IRT.json ...]
                                                   metric table (docs/metric_table.md): representative metrics
@@ -175,7 +176,11 @@ def cmd_compare(ref_run: str, other_run: str, out: str) -> int:
     if not same_ids:
         res["verdict"] = "not_judged_different_prompt_token_ids"
     _write_x(Path(out), res)
-    print(json.dumps({k: v for k, v in res.items() if k != "prompt_token_ids_differing_items"}, indent=1))
+    print(json.dumps({k: v for k, v in res.items()
+                      if k not in ("prompt_token_ids_differing_items", "differing_items")}, indent=1))
+    if res.get("summary"):
+        print(res["summary"] if same_ids else "not judged: the two runs received different prompt token IDs",
+              file=sys.stderr)
     return 0
 
 
