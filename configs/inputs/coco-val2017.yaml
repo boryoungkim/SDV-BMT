@@ -1,0 +1,21 @@
+# YOLOX family input: the official COCO 2017 val set, all 5,000 images (sorted by image id), built by
+# tools/stage2b_g_real/build_coco_subset.py --count 5000 from a local copy of COCO 2017 val (val2017/ +
+# annotations/instances_val2017.json). Payloads are the decoded RGB pixels (PPM, decoded once offline by Pillow
+# 11.1.0 / libjpeg-turbo 3.1.0); annotations (36,781 objects, 48 images without objects) are inline in the index.
+# The first 1,000 rows are byte-identical to coco-val2017-first1000.
+schema_version: 1
+input_kind: dataset
+input_id: coco-val2017
+version: "1"
+family:
+  source_dataset: coco-2017-val-instances
+  source_version: "2017"
+  task: coco-2017-object-detection
+  annotation_schema: coco-2017-instances-bbox/1
+  preprocessing_contract: yolox-letterbox-bgr-chw640-f32/1
+source:
+  index: ../../datasets/coco-val2017/index.jsonl
+  index_sha256: 81da4edca96660d848640c1ca37ced36a4d2d21cb816c85ac31782a7b9a67e1e
+selection:
+  start: 0
+  count: 5000

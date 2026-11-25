@@ -88,7 +88,7 @@ SHA-256, row counts).
 ```text
 ┌─ yolox-s-coco-v1-quality ────────────────────────────────────────────────────
 │ task         coco-2017-object-detection
-│ dataset      coco-val2017-first1000 (1,000 items)
+│ dataset      coco-val2017 (5,000 items)
 │ device       NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition
 │ experiment   yolox-s-baseline
 │
@@ -117,7 +117,7 @@ For detailed results (every metric, every run), see the CSV file:
 |---|---|
 | `row` | `headline`, `model` or `run` |
 | `task` | task of the workload (`coco-2017-object-detection`, `cityscapes-semantic-segmentation-19class`, `nuscenes-3d-detection-10class`, `llm-speed`, `llm-tinymmlu`; `llm-mmlu` for v1.0 bundles) |
-| `dataset` | input data of the run. CNN / LiDAR: the input set of `manifest.json` and its item count, for example `coco-val2017-first1000 (1,000 items)` (a run series: the items of all parts). LLM: `speed-s1-s5 (synthetic token IDs)` for the speed workload file, `tinymmlu-100 (100 items)` for the tinyMMLU item list with the item total of the evaluation |
+| `dataset` | input data of the run. CNN / LiDAR: the input set of `manifest.json` and its item count, for example `coco-val2017 (5,000 items)` (a run series: the items of all parts). LLM: `speed-s1-s5 (synthetic token IDs)` for the speed workload file, `tinymmlu-100 (100 items)` for the tinyMMLU item list with the item total of the evaluation |
 | `model` | model (workload) name |
 | `device` | device name as recorded in the run: the GPU product name, or vendor and accelerator family with the DUT config (for example `Mobilint NPU (mobilint-mla400-aries2-single-c0c0)`) |
 | `experiment_id` | experiment identifier |

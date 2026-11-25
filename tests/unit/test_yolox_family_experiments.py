@@ -22,9 +22,12 @@ def plan(name):
 
 
 def test_baselines_share_one_replay_rate_and_a_frame_period_deadline():
-    with_golden = [m for m, _, _, _, golden in M.MODELS if (CONFIGS / "references" / golden).is_file()]
-    assert "s" in with_golden  # the v0.1.0 golden of YOLOX-S is tracked
+    with_golden = [m[0] for m in M.MODELS if (CONFIGS / "references" / m[-1]).is_file()]
+    assert with_golden == ["tiny", "s", "m", "l", "x"]  # the goldens of all five models on COCO val2017 are tracked
     plans = [plan(f"yolox-{m}-baseline") for m in with_golden]
+    for m, p in zip(with_golden, plans):  # baselines and captures use the 5,000-image val2017 inputs
+        assert p.input.endswith("coco-val2017-416.yaml" if m == "tiny" else "coco-val2017.yaml")
+        assert plan(f"yolox-{m}-capture").input == p.input
     rates = {p.replay.rate_hz for p in plans}
     assert len(rates) == 1 and all(p.replay.mode is ReplayMode.FIXED_RATE for p in plans)
     period = math.floor(Fraction(10 ** 9) / Fraction(repr(rates.pop())))

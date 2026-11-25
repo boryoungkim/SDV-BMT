@@ -1,6 +1,6 @@
 # YOLOX NPU port (ACTUAL, Mobilint MLA400 /dev/aries2, single core Cluster0/Core0). Golden capture:
 # YOLOX-X compiled for aries-rb (8-bit, cut at the nine head convolutions, head tail on the host) on the
-# first 1000 COCO val2017 images, closed loop N=1 (asap: no request is dropped whatever the service time), no
+# all 5,000 COCO val2017 images, closed loop N=1 (asap: no request is dropped whatever the service time), no
 # output reference. Its COCO AP must equal the L1 NPU AP of the same compiled model; its encoded task outputs
 # become the output reference of the model's NPU baseline runs. Copied from yolox-x-capture.yaml (workload, DUT
 # and comments changed).
@@ -9,7 +9,7 @@ experiment_id: yolox-x-mla400-capture
 execution_kind: actual
 seed: 0
 repetitions: 1
-input: ../inputs/coco-val2017-first1000.yaml
+input: ../inputs/coco-val2017.yaml
 workload: ../workloads/yolox-x-coco-v1-mla400-q8.yaml
 dut: ../duts/mobilint-mla400-aries2-single-c0c0.yaml
 stress: {spec: ../stress/fake-virtual-axis.yaml, level: none}

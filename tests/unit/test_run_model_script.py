@@ -113,7 +113,7 @@ def test_dry_run_checks_every_configuration_and_writes_nothing(tmp_path):
     assert "all 12 (GPU)" in proc.stdout and "rngd-furiosa" not in proc.stdout
     assert proc.stdout.count("sdv_bmt.cli.table") == 9 and proc.stdout.count("sdv_bmt.llm table") == 3
     assert _datasets(proc.stdout) == [  # under the models line, each once, as the result table writes them
-        "coco-val2017-first1000-416 (1,000 items)", "coco-val2017-first1000 (1,000 items)",
+        "coco-val2017-416 (5,000 items)", "coco-val2017 (5,000 items)",
         "cityscapes-val500 (500 items)", "nuscenes-mini-val4 (162 items)", "nuscenes-val (6,019 items)",
         "speed-s1-s5 (synthetic token IDs)", "tinymmlu-100 (100 items)"]
 
@@ -132,7 +132,7 @@ def test_flow_with_stub_commands_refuses_existing_runs_and_a_held_marker(tmp_pat
     assert "run 2/2  completed/valid" in proc.stdout and "evaluated 2 (sdv-bmt-model-metric-set-v1.1)" in proc.stdout
     assert (out / "tables" / "yolox-s.metrics.csv").is_file()
     assert "DUT service time (median) - 1.000 ms" in proc.stdout
-    assert "  models           yolox-s\n  dataset          coco-val2017-first1000 (1,000 items)\n" in proc.stdout
+    assert "  models           yolox-s\n  dataset          coco-val2017 (5,000 items)\n" in proc.stdout
     assert not mark.exists()  # the marker is released
     again = _run(["yolox-s"], env)
     assert again.returncode == 3 and "already has runs" in again.stdout

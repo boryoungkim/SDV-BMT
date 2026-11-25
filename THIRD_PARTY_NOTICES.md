@@ -14,9 +14,9 @@ third-party data are:
 
 | file | content | origin |
 |---|---|---|
-| `configs/references/coco-val2017-first*.yolox-*-coco-v1.gpu-capture.golden.jsonl` | COCO image ids and SHA-256 digests of SDV-BMT's own encoded detection outputs | produced by SDV-BMT runs |
+| `configs/references/coco-val2017*.yolox-*-coco-v1.gpu-capture.golden.jsonl` | COCO image ids and SHA-256 digests of SDV-BMT's own encoded detection outputs | produced by SDV-BMT runs |
 | `configs/workloads/yolox-*-coco-v1*.yaml` | SHA-256 of the YOLOX ONNX files (Tiny, S, M, L, X) and of the derived plan/weights | digests only |
-| `configs/inputs/coco-val2017-first*.yaml` | SHA-256 of the locally built COCO subset index | digests only |
+| `configs/inputs/coco-val2017*.yaml` | SHA-256 of the locally built COCO val2017 index (all 5,000 images) and of the earlier 1,000-image subset | digests only |
 | `configs/workloads/deeplabv3plus-*-cityscapes-v1.yaml`, `configs/duts/*-deeplabv3plus-*.yaml` | SHA-256 of the locally exported DeepLabV3+ ONNX files and derived plans/weights; cuDNN algorithm tables | digests and enum values only |
 | `configs/experiments/deeplabv3plus-*.yaml` | experiment settings that reference a locally built Cityscapes val input (not in this repository) | no Cityscapes data |
 | `configs/inputs/cityscapes-val500.yaml` | SHA-256 of the locally built Cityscapes val index (images and ground truth stay local) | digests only |
@@ -77,7 +77,7 @@ repository.
 | YOLOX-X ONNX model `yolox_x.onnx` (396,142,663 bytes, SHA-256 `c892d7aaf1c4746d8a4d675bec669a4db4f434b4ee1efb654bc9b353379c7c55`) | YOLOX release 0.1.1rc0, `https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_x.onnx` | Apache License 2.0 (YOLOX) |
 | derived cuDNN plan and float32 weight file | built locally by `tools/stage2b_g_real/build_yolox_plan.py` from the ONNX file | derived from the Apache-2.0 model; not distributed here |
 | COCO 2017 validation images and `instances_val2017.json` | https://cocodataset.org | annotations: CC BY 4.0 (COCO Consortium); images: the terms of their Flickr sources |
-| COCO subset (first 1,000 val2017 images, decoded once to PPM) | built locally by `tools/stage2b_g_real/build_coco_subset.py` | same terms as COCO; not distributed here |
+| COCO val2017 index (all 5,000 images; the earlier subset: the first 1,000), decoded once to PPM | built locally by `tools/stage2b_g_real/build_coco_subset.py` | same terms as COCO; not distributed here |
 | mmsegmentation DeepLabV3+ Cityscapes checkpoints (R-18-D8 49,983,942 bytes, SHA-256 `cff257fe18e79eeec8a15e460f25eb6c1dadeb5698214bacf5110d13474b66f5`; R-50-D8 174,743,997 bytes, `f9fb496d052e9c02573dd68c191ffd3d9319e99910a462f094159e7ccf843bd1`; R-101-D8 250,971,113 bytes, `068fcfe9efdfadf09e468909f5df82dab844b20832361b93e2d53d4edeb73a9b`) | `https://download.openmmlab.com/mmsegmentation/v0.5/deeplabv3plus/deeplabv3plus_r{18,50,101}-d8_512x1024_80k_cityscapes/...` (model zoo, 512x1024, 80k) | mmsegmentation code: Apache License 2.0; the model zoo states no separate license for the weights; trained on Cityscapes; not distributed here |
 | derived DeepLabV3+ ONNX files, cuDNN plans and float32 weight files | exported locally by `tools/deeplab_family/export_onnx.py` (BatchNorm folded) and converted by `tools/deeplab_family/build_deeplab_plan.py` | derived from the checkpoints above; not distributed here |
 | Cityscapes val images (`leftImg8bit_trainvaltest.zip`) and fine annotations (`gtFine_trainvaltest.zip`) | https://www.cityscapes-dataset.com (registered account of the user) | Cityscapes license: non-commercial research use, no redistribution of the data or of derived data from which it can be recovered; cite M. Cordts et al., "The Cityscapes Dataset for Semantic Urban Scene Understanding", CVPR 2016; not distributed here |
