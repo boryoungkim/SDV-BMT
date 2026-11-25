@@ -4,6 +4,16 @@ All notable changes to SDV-BMT are recorded here. Versions follow semantic versi
 
 ## [Unreleased]
 
+### Added
+
+- **Prepared-input cache (opt-in).** With `SDV_BMT_PREPARED_INPUT_CACHE` set to a directory, the runner reuses
+  `Workload.preprocess` results across runs (`src/sdv_bmt/runner/prepcache.py`). The key covers the whole SDV-BMT source
+  tree digest, the workload implementation, the preprocessing identity, the input contract digest and the full input
+  item (its payload SHA-256 is re-verified against the file when the input opens); an entry is re-hashed on every
+  read and a damaged one is a miss. Preprocessing stays outside every measured interval and the prepared inputs are
+  the same; the `prepare_inputs` end event records the cache counts (`details.prepared_input_cache`, no path).
+  Unset, nothing changes.
+
 ### Changed
 
 - **LLM quality workload: tinyMMLU (100 items) evaluated as the lm-evaluation-harness task `tinyMMLU`** replaces the

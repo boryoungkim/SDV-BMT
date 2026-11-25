@@ -22,6 +22,7 @@ tools/run_model.sh all-mla400           # the 5 MLA400 models in order, on the M
 | `R` | results root (default `runs/bench-YYYYMMDD`); a model whose runs already exist below it is refused |
 | `REPS` | runs per model (default 5); the tinyMMLU runs and the CenterPoint val series run once |
 | `SDV_BMT_MODELS`, `SDV_BMT_DATASETS`, `SDV_BMT_CACHE`, `VLLM_PY`, `FURIOSA_PY`, `HF_HOME` | Llama models only, see `docs/llm_benchmark.md` |
+| `SDV_BMT_PREPARED_INPUT_CACHE` | optional: a directory for the prepared-input cache (`runner/prepcache.py`). Later runs reuse verified `Workload.preprocess` results of the same code, input contract and items (YOLOX on 5,000 images: about 12 minutes of preprocessing per run otherwise). Prefer a fast local disk; about 25 GB for the 640 input and 10 GB for the 416 input |
 | `LMEVAL_PY`, `TINYMMLU_IRT_PKL` | Llama models, optional: the lm-eval environment and the pinned `tinyBenchmarks.pkl`; with both, the table also carries the tinyMMLU gp-IRT value (`tools/llm/tinymmlu_irt.py`) |
 | `MLA400_DEVICE` | MLA400 models only: the device file checked for other users (default: the device of the DUT config) |
 

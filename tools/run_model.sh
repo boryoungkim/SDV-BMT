@@ -19,6 +19,8 @@
 #   SDV_BMT_MODELS, SDV_BMT_DATASETS, SDV_BMT_CACHE, VLLM_PY, FURIOSA_PY and HF_HOME
 #   (the cache that holds the RNGD 8B artifact), see docs/llm_benchmark.md.  With LMEVAL_PY (the lm-eval environment)
 #   and TINYMMLU_IRT_PKL (the pinned tinyBenchmarks.pkl) the table also carries the tinyMMLU gp-IRT value.
+#   SDV_BMT_PREPARED_INPUT_CACHE (optional, a directory) lets later runs reuse verified preprocessing results
+#   (src/sdv_bmt/runner/prepcache.py; outside the measured interval, same prepared inputs).
 #   MLA400 models (yolox-*-mla400) run on the host of the Mobilint MLA400 card: they need the native runner
 #   (tools/mobilint/build_native.sh), the device node of the DUT config and the compiled models (.mxq) named by the
 #   workloads (tools/mobilint/README.md).  MLA400_DEVICE overrides the device file checked for other users
@@ -507,6 +509,7 @@ main() {
     all) echo "all ${#MODELS[@]} (GPU)" ;; all-mla400) echo "all ${#MLA400[@]} (Mobilint MLA400)" ;;
     *) echo "$target" ;; esac)"
   if [ ${#group[@]} = 0 ]; then print_datasets "$target"; else print_datasets "${group[@]}"; fi
+  [ -n "${SDV_BMT_PREPARED_INPUT_CACHE:-}" ] && printf '  %-16s %s\n' "input cache" "$SDV_BMT_PREPARED_INPUT_CACHE"
   [ $DRY = 1 ] && printf '  %-16s %s\n' "mode" "dry run (prints the commands; nothing is executed)"
   if [ ${#group[@]} = 0 ]; then section "$target"; run_one "$target"; exit $?; fi
 

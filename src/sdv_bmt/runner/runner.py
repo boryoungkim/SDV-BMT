@@ -125,6 +125,7 @@ from ..observation.events import REALTIME_EVENT_SCHEMA_VERSION
 from ..evidence.provenance import code_identity, environment
 from ..observation.reader import BundleReadError, fold_requests, folded_counts, read_jsonl, restore_recorded_ok
 from ..observation.recorder import ObservationRecorder
+from .prepcache import cache_from_environment
 from .core import (
     PreparationFailure,
     PreparedStore,
@@ -825,10 +826,16 @@ class BenchmarkRunner:
 
         store = state.store = PreparedStore()
         override = pf.input_override
+        cache = None if override is not None else cache_from_environment({
+            "source_tree_sha256": code_identity()["source_tree_sha256"],
+            "workload_implementation": rp.workload.implementation,
+            "preprocess": to_jsonable(rp.workload.preprocess),
+            "input_contract_digest": pf.input_pipeline.input_contract_digest,
+        })
         rec.event("phase", clock.now, phase="prepare_inputs", edge="begin")
         try:
             if override is None:
-                prepare_inputs(c.input_provider, c.workload, c.dut, pf.items, store)
+                prepare_inputs(c.input_provider, c.workload, c.dut, pf.items, store, cache)
             else:
                 prepare_inputs_with_override(c.input_provider, override, pf.items, store)
             if pf.realtime:  # stage every prepared input natively (device-visible memory, digest re-verified)
@@ -856,6 +863,7 @@ class BenchmarkRunner:
                 "failed_items": [
                     {"item_index": i, "stage": f.stage, "error": f.error} for i, f in sorted(failed.items())
                 ],
+                **({"prepared_input_cache": cache.record()} if cache is not None else {}),
             },
         )
         if override is not None:
