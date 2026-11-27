@@ -163,25 +163,24 @@ results and limitations: [`docs/results/v0.1.0-gpu-reference-result.md`](docs/re
 
 Five fixed-rate runs per model (min–max over the runs). Every run completed all requests with no drops, timeouts,
 errors or deadline misses, and its outputs were byte-identical to the model's golden capture. The YOLOX rows use
-all 5,000 COCO val2017 images (measured 2026-11-27); the DeepLabV3+ rows are from v0.1.2.
+all 5,000 COCO val2017 images (measured 2026-11-27 and 28); the DeepLabV3+ rows are from v0.1.2.
 
 | model | data | rate | DUT-service p50 (ms) | DUT-service max_observed (ms) | quality |
 |---|---|---|---:|---:|---|
-| YOLOX-Tiny | COCO val2017, 5,000 | 30 Hz | 2.23–2.24 | 2.97–20.78 | mAP 0.3262 |
-| YOLOX-S | COCO val2017, 5,000 | 30 Hz | 4.34–4.38 | 5.49–11.81 | mAP 0.4018 |
-| YOLOX-M | COCO val2017, 5,000 | 30 Hz | 9.77–10.56 | 11.80–24.83 | mAP 0.4658 |
-| YOLOX-L | COCO val2017, 5,000 | 30 Hz | 16.16–16.23 | 17.78–25.00 | mAP 0.4939 |
+| YOLOX-Tiny | COCO val2017, 5,000 | 30 Hz | 2.22–2.25 | 2.68–3.34 | mAP 0.3262 |
+| YOLOX-S | COCO val2017, 5,000 | 30 Hz | 4.34–4.41 | 5.67–5.96 | mAP 0.4018 |
+| YOLOX-M | COCO val2017, 5,000 | 30 Hz | 9.75–10.55 | 11.07–11.81 | mAP 0.4658 |
+| YOLOX-L | COCO val2017, 5,000 | 30 Hz | 16.20–16.25 | 16.98–17.77 | mAP 0.4939 |
 | YOLOX-X | COCO val2017, 5,000 | 30 Hz | 26.71–27.98 | 28.04–29.55 | mAP 0.5072 |
 | DeepLabV3+ R-18 | Cityscapes val, 500 | 2 Hz | 25.51–25.86 | 27.38–29.65 | mIoU 0.7676 |
 | DeepLabV3+ R-50 | Cityscapes val, 500 | 2 Hz | 114.27–114.76 | 122.43–129.57 | mIoU 0.7985 |
 | DeepLabV3+ R-101 | Cityscapes val, 500 | 2 Hz | 165.64–166.45 | 175.14–176.22 | mIoU 0.8087 |
 
-Models are compared side by side; differences between models are not attributed to a cause. Each family was
-measured on one day, so these YOLOX-S timings are not compared with the v0.1.0 run above. YOLOX-Tiny to L ran in
-one series while the host's other GPU was busy with another job; YOLOX-X was measured later that day with that
-GPU idle. An earlier YOLOX-X series under the busy condition had DUT-service p50 26.93–28.23 ms and dropped 18 of
-its 25,000 requests, so the Tiny to L timings may read slightly high. Numeric checks against ONNX Runtime and the
-official implementations, the replay-rate rule, operating records and limitations (1,000-image v0.1.2 runs):
+Models are compared side by side; differences between models are not attributed to a cause. The YOLOX-S timings
+are not compared with the v0.1.0 run above, which used 1,000 images on another day. The YOLOX runs had the host's
+other GPU idle and the CPU node of the measured GPU quiet at the start of every model. Numeric checks against ONNX
+Runtime and the official implementations, the replay-rate rule, operating records and limitations (1,000-image
+v0.1.2 runs):
 [`docs/results/v0.1.2-gpu-reference-result.md`](docs/results/v0.1.2-gpu-reference-result.md).
 
 ### CenterPoint-Pillars
