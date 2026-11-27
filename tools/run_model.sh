@@ -477,7 +477,7 @@ dataset_of() {  # plan: its input data, written as the dataset line of the resul
   esac
 }
 
-print_datasets() {  # model...: the input data of the given models, each once, under the models line
+print_datasets() {  # model...: the input data of the given models, each once (one model: in its header or section)
   local -a ds=(); local m p label=dataset
   mapfile -t ds < <(for m in "$@"; do for p in $(plans_of "$m"); do dataset_of "$p"; done; done | awk '!seen[$0]++')
   [ ${#ds[@]} -gt 1 ] && label=datasets
@@ -508,7 +508,7 @@ main() {
   printf '  %-16s %s\n' "results" "$(realpath -m "$R")" "runs per model" "$REPS" "models" "$(case $target in
     all) echo "all ${#MODELS[@]} (GPU)" ;; all-mla400) echo "all ${#MLA400[@]} (Mobilint MLA400)" ;;
     *) echo "$target" ;; esac)"
-  if [ ${#group[@]} = 0 ]; then print_datasets "$target"; else print_datasets "${group[@]}"; fi
+  [ ${#group[@]} = 0 ] && print_datasets "$target"  # a group prints each model's data in that model's section
   [ -n "${SDV_BMT_PREPARED_INPUT_CACHE:-}" ] && printf '  %-16s %s\n' "input cache" "$SDV_BMT_PREPARED_INPUT_CACHE"
   [ $DRY = 1 ] && printf '  %-16s %s\n' "mode" "dry run (prints the commands; nothing is executed)"
   if [ ${#group[@]} = 0 ]; then section "$target"; run_one "$target"; exit $?; fi
@@ -518,6 +518,7 @@ main() {
   for m in "${group[@]}"; do
     k=$(( k + 1 ))
     section "[$k/${#group[@]}] $m"
+    print_datasets "$m"
     run_one "$m"; rc=$?
     case $rc in 0) status=ok ;; 3) status=refused; failed=1 ;; *) status=failed; failed=1 ;; esac
     results+=("$m $status $ELAPSED")

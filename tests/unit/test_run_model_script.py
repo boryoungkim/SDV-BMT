@@ -86,6 +86,18 @@ def _datasets(stdout):
     return values
 
 
+def _section_datasets(stdout):
+    """A group run: {model: its dataset lines} from each "── [k/n] model" section; the start header has none."""
+    lines = stdout.splitlines()
+    first = next(i for i, line in enumerate(lines) if line.startswith("── ["))
+    assert not any(line.startswith(("  dataset ", "  datasets ")) for line in lines[:first])
+    out = {}
+    for i, line in enumerate(lines):
+        if line.startswith("── ["):
+            out[line.split("] ", 1)[1].split(" ", 1)[0]] = _datasets("\n".join(lines[i + 1:]))
+    return out
+
+
 def test_list_names_the_12_gpu_models_the_3_rngd_models_the_5_mla400_models_and_the_eagle_n_model():
     proc = _run(["list"])
     assert proc.returncode == 0 and proc.stdout.split() == MODELS + [CP_MINI] + RNGD + MLA400 + EAGLE_N
@@ -112,10 +124,14 @@ def test_dry_run_checks_every_configuration_and_writes_nothing(tmp_path):
             assert c.is_file()
     assert "all 12 (GPU)" in proc.stdout and "rngd-furiosa" not in proc.stdout
     assert proc.stdout.count("sdv_bmt.cli.table") == 9 and proc.stdout.count("sdv_bmt.llm table") == 3
-    assert _datasets(proc.stdout) == [  # under the models line, each once, as the result table writes them
-        "coco-val2017-416 (5,000 items)", "coco-val2017 (5,000 items)",
-        "cityscapes-val500 (500 items)", "nuscenes-mini-val4 (162 items)", "nuscenes-val (6,019 items)",
-        "speed-s1-s5 (synthetic token IDs)", "tinymmlu-100 (100 items)"]
+    coco, cityscapes = ["coco-val2017 (5,000 items)"], ["cityscapes-val500 (500 items)"]
+    llm = ["speed-s1-s5 (synthetic token IDs)", "tinymmlu-100 (100 items)"]
+    assert _section_datasets(proc.stdout) == {  # per model, only its own data, as the result table writes it
+        "yolox-tiny": ["coco-val2017-416 (5,000 items)"], "yolox-s": coco, "yolox-m": coco, "yolox-l": coco,
+        "yolox-x": coco, "deeplabv3plus-r18": cityscapes, "deeplabv3plus-r50": cityscapes,
+        "deeplabv3plus-r101": cityscapes,
+        "centerpoint-pillar02": ["nuscenes-mini-val4 (162 items)", "nuscenes-val (6,019 items)"],
+        "llama-3.2-1b-instruct": llm, "llama-3.2-3b-instruct": llm, "llama-3.1-8b-instruct": llm}
 
 
 def test_flow_with_stub_commands_refuses_existing_runs_and_a_held_marker(tmp_path):
@@ -155,7 +171,8 @@ def test_mla400_dry_run_names_the_plans_the_device_and_the_compiled_models(tmp_p
         assert f"{name}: NPU /dev/aries2, compiled model " in proc.stdout and f"yolox_{short}_head9.mxq" in proc.stdout
     assert proc.stdout.count("--catalog sdv-bmt-model-metric-set-v1.1") == 5
     assert proc.stdout.count("sdv_bmt.cli.table") == 5 and "llama" not in proc.stdout
-    assert _datasets(proc.stdout) == ["coco-val2017-416 (5,000 items)", "coco-val2017 (5,000 items)"]
+    assert _section_datasets(proc.stdout) == {
+        "yolox-tiny-mla400": ["coco-val2017-416 (5,000 items)"], **{m: ["coco-val2017 (5,000 items)"] for m in MLA400[1:]}}
 
 
 def test_mla400_flow_checks_the_host_and_refuses_a_held_device(tmp_path):

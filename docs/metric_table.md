@@ -48,8 +48,9 @@ another process holds the device open. The Mobilint SDK license forbids publishi
 benchmark results without Mobilint's written consent (`docs/mobilint/mla400-yolox-port.md`): keep their tables in
 the results root.
 
-The script starts with an SDV-BMT banner, the results root, the models and their datasets (read from the plans,
-written as the dataset line of the result table), and prints a header line per model. While it runs,
+The script starts with an SDV-BMT banner, the results root and the models, and prints a header line per model
+followed by the dataset that model uses (read from the plans, written as the dataset line of the result table; for
+one model it is in the start header). While it runs,
 it shows progress: the run number and a bar of the elapsed time against the typical duration on the reference
 host (an estimate, held at 99 % until the run ends), with the finished parts of the run series and the finished
 Llama runs. When a model is done it prints the headline table of
