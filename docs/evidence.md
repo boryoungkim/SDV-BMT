@@ -61,7 +61,7 @@
 | `run_finished` | `execution_status`, `execution_reason`, `measurement_status`, `measurement_reason`, `request_counts`, `stress_status` | |
 | `stress` | `step`, `outcome`, `provider`, `stress_axis_digest`, `stress_level`, `requested`, `achieved`, `independent_evidence`, `verification`, `error`, `details` | |
 
-`phase` 값: `input.open`, `dut.prepare`, `prepare_inputs`, `input.equivalence`(adapter_override만; end event의 `details`에 status/method/validated_items/mismatched_item_indices), `stress.prepare`, `stress.activate`, `stress.verify`, `measure`, `drain`. `cleanup.step` 값: `stress.deactivate`, `stress.restore`, `prepared_store.discard`, `dut.cleanup`, `input.release`.
+`phase` 값: `input.open`, `dut.prepare`, `prepare_inputs`(end event의 `details`에 `prepared`, `failed_items`; 전처리 결과 캐시를 켠 run은 `prepared_input_cache`도: `method`, `context_digest`, `hits`, `misses`, `written`, `rejected`, `write_errors`, `not_cacheable`. 캐시 경로는 기록하지 않는다), `input.equivalence`(adapter_override만; end event의 `details`에 status/method/validated_items/mismatched_item_indices), `stress.prepare`, `stress.activate`, `stress.verify`, `measure`, `drain`. `cleanup.step` 값: `stress.deactivate`, `stress.restore`, `prepared_store.discard`, `dut.cleanup`, `input.release`.
 
 `output_ref` = `{request_id, file, offset, length, sha256, codec}`.
 

@@ -7,7 +7,7 @@ Bundle layout (every file created exclusively, manifest written last)::
         run_spec.json            resolved config, workload digests, measurement boundary
         environment.json         runtime settings read back after load, host state before/after, cache counters
         requests.jsonl           one record per request (appended as requests finish)
-        quality_reference.jsonl  MMLU runs only: item_id -> gold answer letter (frozen copy)
+        quality_reference.jsonl  task runs only (MMLU, tinyMMLU): item_id -> reference fields (frozen copy)
         manifest.json            SHA-256 of the files above, run status, request counts
         evaluations/<eval_id>/   written by ``evaluate`` (never overwritten)
 
@@ -34,6 +34,7 @@ from ..evidence.provenance import code_identity, environment
 from . import LLM_BUNDLE_SCHEMA, LLM_RUN_SCHEMA
 from .backends import FakeCodec, make_backend
 from .mmlu import LETTERS, LLAMA3_STOP_TOKEN_IDS, MAX_NEW_TOKENS
+from .tinymmlu import PROMPT_LOGPROBS
 from .workload import file_sha256, read_jsonl
 
 MEASUREMENT_BOUNDARY = {
@@ -89,8 +90,60 @@ def load_config(path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     return raw, cfg
 
 
+# Task workloads: one prompt-file row per runtime request (``item_id``, ``request_key``, ``input_token_ids``,
+# ``input_token_ids_sha256``, optional ``score_from``, plus the item fields the scorer needs), in execution order.
+# The generation settings are fixed per task here; a task that scores prompt log-probabilities asks for them from
+# the row's ``score_from`` on.  A later generation task (e.g. a dialogue response workload) adds an entry with its
+# own generation settings and keeps the run, record and bundle structure unchanged.
+TASK_GENERATION: dict[str, dict[str, Any]] = {
+    "tinymmlu": {"max_tokens": 1, "min_tokens": 0, "ignore_eos": False, "stop_token_ids": [],
+                 "prompt_logprobs": PROMPT_LOGPROBS},
+}
+TASK_REFERENCE_FIELDS: dict[str, tuple[str, ...]] = {"tinymmlu": ("subject", "answer")}
+TASK_KEEP_TEXT: dict[str, bool] = {"tinymmlu": False}
+
+
+def _items_file_check(w: dict[str, Any], rows: list[dict[str, Any]]) -> None:
+    """The prompt file follows the public item list (order and per-item SHA-256)."""
+    items = json.loads(Path(w["items_file"]).read_text(encoding="utf-8"))
+    listed = [it["item_id"] for it in items["items"]]
+    seen: list[str] = []
+    for r in rows:
+        if not seen or seen[-1] != r["item_id"]:
+            seen.append(r["item_id"])
+    if listed != seen:
+        raise LlmRunError("prompt file does not follow the public item list order")
+    shas = {it["item_id"]: it["item_sha256"] for it in items["items"]}
+    bad = [r["item_id"] for r in rows if shas[r["item_id"]] != r["item_sha256"]]
+    if bad:
+        raise LlmRunError(f"item SHA-256 mismatch for {len(bad)} requests, first {bad[0]}")
+
+
+def _task_requests(kind: str, w: dict[str, Any], rows: list[dict[str, Any]]):
+    if "items_file" in w:
+        _items_file_check(w, rows)
+    base = TASK_GENERATION[kind]
+
+    def req(r: dict[str, Any], phase: str) -> dict[str, Any]:
+        gen = dict(base)
+        if "prompt_logprobs" in gen:
+            gen["score_from"] = int(r["score_from"])
+        return {"item_id": r["item_id"], "request_key": r.get("request_key"), "workload": kind, "phase": phase,
+                "input_token_ids": r["input_token_ids"], "input_token_ids_sha256": r["input_token_ids_sha256"],
+                "generation": gen}
+
+    warm = int(w.get("warmup", 3))
+    reqs = [req(r, "warmup") for r in rows[:warm]] + [req(r, "measure") for r in rows]
+    ref, seen = [], set()
+    for r in rows:
+        if r["item_id"] not in seen:
+            seen.add(r["item_id"])
+            ref.append({"item_id": r["item_id"], **{k: r[k] for k in TASK_REFERENCE_FIELDS[kind]}})
+    return reqs, ref
+
+
 def build_requests(cfg: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """(request list in execution order, MMLU quality reference rows or [])."""
+    """(request list in execution order, quality reference rows or [])."""
     w = cfg["workload"]
     path = Path(w["file"])
     actual = file_sha256(path)
@@ -99,6 +152,8 @@ def build_requests(cfg: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict
     rows = list(read_jsonl(path))
     if w["kind"] == "speed":
         return rows, []
+    if w["kind"] in TASK_GENERATION:
+        return _task_requests(w["kind"], w, rows)
     if w["kind"] != "mmlu":
         raise LlmRunError(f"unknown workload kind {w['kind']!r}")
     if "items_file" in w:
@@ -170,6 +225,7 @@ async def _run_requests(backend, requests: list[dict[str, Any]], decode, fh, kee
         cached: Optional[int] = None
         t_done: Optional[int] = None
         logprobs = None
+        prompt_lps = None
         err = None
         t_submit = time.monotonic_ns()
         try:
@@ -183,6 +239,8 @@ async def _run_requests(backend, requests: list[dict[str, Any]], decode, fh, kee
                     cached = item.num_cached_tokens
                 if getattr(item, "logprobs", None) and logprobs is None:
                     logprobs = item.logprobs[0]
+                if item.prompt_token_logprobs is not None and prompt_lps is None:
+                    prompt_lps = item.prompt_token_logprobs
                 if item.finish_reason is not None:
                     finish = item.finish_reason
                     t_done = t - t_submit
@@ -203,6 +261,17 @@ async def _run_requests(backend, requests: list[dict[str, Any]], decode, fh, kee
             "t_done_ns": t_done, "t_exit_ns": t_exit, "out_token_ids": out_ids, "finish_reason": finish,
             "num_cached_tokens": cached, "status": status, "error": err,
         }
+        if req.get("request_key") is not None:
+            rec["request_key"] = req["request_key"]
+        if "prompt_logprobs" in req["generation"]:
+            # log-probability of the actual prompt tokens from generation.score_from on (None: not returned)
+            rec["prompt_token_logprobs"] = prompt_lps
+            if status == "completed" and (prompt_lps is None or len(prompt_lps) !=
+                                          len(ids) - req["generation"]["score_from"]):
+                status, err = "error", "runtime returned no prompt log-probabilities for the scored positions"
+                counts["completed"] -= 1
+                counts["error"] += 1
+                rec["status"], rec["error"] = status, err
         if logprobs is not None:
             rec["first_token_logprobs"] = {str(k): v for k, v in logprobs.items()}
         if keep_text:
@@ -263,7 +332,9 @@ def run_once(config_path: Path, out_root: Path) -> Path:
         env["load_ns"] = time.monotonic_ns() - t_load
         env["counters_before"] = backend.counters()
         with open(run_dir / "requests.jsonl", "x", encoding="utf-8") as fh:
-            counts = asyncio.run(_run_requests(backend, requests, decode, fh, keep_text=bool(reference)))
+            kind = cfg["workload"]["kind"]
+            keep_text = TASK_KEEP_TEXT.get(kind, bool(reference))
+            counts = asyncio.run(_run_requests(backend, requests, decode, fh, keep_text=keep_text))
         env["counters_after"] = backend.counters()
         status = "completed" if counts["error"] == 0 else "completed_with_errors"
     except Exception as exc:  # noqa: BLE001

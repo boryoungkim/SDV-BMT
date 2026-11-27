@@ -12,12 +12,15 @@ the counts.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Optional, Sequence
 
 from ..contracts.ids import is_sha256_hex
 from ..contracts.protocols import AdapterInputOverride, DUTAdapter, InputProvider, Workload
 from ..contracts.records import EquivalenceValidation, ErrorInfo, InputItem
 from ..contracts.status import EquivalenceStatus, RequestState
+
+if TYPE_CHECKING:
+    from .prepcache import PreparedInputCache
 
 S = RequestState
 
@@ -154,15 +157,22 @@ def prepare_inputs(
     adapter: DUTAdapter,
     items: Sequence[InputItem],
     store: PreparedStore,
+    cache: Optional["PreparedInputCache"] = None,
 ) -> None:
     """Eager PREPARE_INPUTS (design v03 D.3/F.5). Per-item failures are kept in
-    the store and later become NOT_ISSUED requests; they do not abort the run."""
+    the store and later become NOT_ISSUED requests; they do not abort the run.
+    With ``cache`` (runner/prepcache.py) a verified earlier ``Workload.preprocess``
+    result of the same item and code is reused instead of preprocessing again."""
     for item in items:
         stage = "payload"
         try:
-            payload = provider.payload(item.item_index)
-            stage = "preprocess"
-            task_input = workload.preprocess(payload, item)
+            task_input = cache.get(item) if cache is not None else None
+            if task_input is None:
+                payload = provider.payload(item.item_index)
+                stage = "preprocess"
+                task_input = workload.preprocess(payload, item)
+                if cache is not None:
+                    cache.put(item, task_input)
             stage = "prepare_input"
             prepared = adapter.prepare_input(task_input, item)
         except Exception as exc:  # recorded per item; the run continues

@@ -194,7 +194,7 @@ Stage 1A boundary(v2)와 identity를 바꾸지 않도록 별도 record(`Realtime
 | 항목 | 값 |
 |---|---|
 | `clock_domain` | `monotonic` |
-| payload read/decode, preprocess | excluded(MEASURE 전 eager) |
+| payload read/decode, preprocess | excluded(MEASURE 전 eager). `SDV_BMT_PREPARED_INPUT_CACHE`로 전처리 결과 캐시를 켜면, 같은 코드·같은 입력 계약·같은 item(검증된 payload SHA-256)의 이전 결과를 SHA-256 재확인 후 재사용한다(`runner/prepcache.py`). 측정 구간 밖이며 준비된 입력의 내용은 같다 |
 | `prepare_input_h2d` | adapter 선언. `host_pinned`: `included`(request마다 3 MiB H2D가 DUT-service 안). `device_resident`: `excluded` |
 | `submit` / `complete` | adapter의 submit/complete 의미 |
 | `completion_observation` | native runner가 backend를 spin-poll; `t_complete` = 완료를 보고한 첫 poll |

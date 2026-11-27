@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Timed LLM baselines: per model 5 speed runs (S1-S5, 3 warm-up + 5 measured each) + 1 MMLU run, one fresh
+# Timed LLM baselines: per model 5 speed runs (S1-S5, 3 warm-up + 5 measured each) + 1 tinyMMLU run, one fresh
 # process per run, one device at a time.  Usage:
 #   tools/llm/run_baselines.sh gpu|rngd [model ...]
 # Host paths: SDV_BMT_MODELS, SDV_BMT_DATASETS, SDV_BMT_CACHE, VLLM_PY, FURIOSA_PY, HF_HOME (RNGD 8B artifact cache).
@@ -41,6 +41,6 @@ run_one() {  # config
 for m in $MODELS; do
   base=configs/llm/experiments/$m.$([ "$DEV" = gpu ] && echo gpu0-vllm || echo rngd-furiosa)
   for k in $(seq 1 "$REPS"); do run_one "$base.speed.yaml"; done
-  run_one "$base.mmlu.yaml"
+  run_one "$base.tinymmlu.yaml"
 done
 echo "$(date -Iseconds) done" >> "$LOG"

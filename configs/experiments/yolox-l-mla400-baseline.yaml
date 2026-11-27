@@ -1,5 +1,5 @@
 # YOLOX NPU port (ACTUAL, Mobilint MLA400 /dev/aries2, single core Cluster0/Core0). Baseline:
-# YOLOX-L compiled for aries-rb (8-bit, cut at the nine head convolutions, head tail on the host) on the first 1000
+# YOLOX-L compiled for aries-rb (8-bit, cut at the nine head convolutions, head tail on the host) on the full 5,000
 # COCO val2017 images, nominal (no stress), N=1, queue 0, drop_new, 32 untimed precondition requests, fixed rate
 # 30 Hz (the GPU family rate), deadline = frame period. Output reference = the model's NPU capture golden
 # (determinism/corruption diagnostic only). Same plan as yolox-l-baseline.yaml except workload, DUT,
@@ -9,7 +9,7 @@ experiment_id: yolox-l-mla400-baseline
 execution_kind: actual
 seed: 0
 repetitions: 1
-input: ../inputs/coco-val2017-first1000.yaml
+input: ../inputs/coco-val2017.yaml
 workload: ../workloads/yolox-l-coco-v1-mla400-q8.yaml
 dut: ../duts/mobilint-mla400-aries2-single-c0c0.yaml
 stress: {spec: ../stress/fake-virtual-axis.yaml, level: none}
@@ -26,8 +26,8 @@ evaluation:
   deadline: {policy: frame_period, period_ns: 33_333_333}
   output_reference:
     kind: external_golden
-    path: ../references/coco-val2017-first1000.yolox-l-coco-v1-mla400-q8.npu-capture.golden.jsonl
-    sha256: 8f1934635b9ead249699ba8947c9dbf6767aac4c97cae4cfe522fa84083e54c7
+    path: ../references/coco-val2017.yolox-l-coco-v1-mla400-q8.npu-capture.golden.jsonl
+    sha256: 2f64164aee684d42b61c72aebf1b396ed315badfcc2a2188ff9456417bc5b59b
 realtime:
   cpu_affinity: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
   wait_policy: spin

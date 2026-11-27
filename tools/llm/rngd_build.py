@@ -7,6 +7,8 @@ script calls the same ArtifactBuilder the CLI uses. Run with the furiosa-llm env
 interpreter (the environment is not modified):
 
     <venv>/bin/python tools/llm/rngd_build.py --model <hf dir> --out <artifact dir> --cache-dir <dir>
+
+``--max-model-len 4096`` builds the tinyMMLU artifacts (longest prompt 3,029 tokens); the speed runs use 2048.
 """
 
 from __future__ import annotations
@@ -41,19 +43,21 @@ def main() -> int:
     ap.add_argument("--tp", type=int, default=8)
     ap.add_argument("--num-pipeline-builder-workers", type=int, default=1)
     ap.add_argument("--num-compile-workers", type=int, default=1)
+    ap.add_argument("--max-model-len", type=int, default=MAX_MODEL_LEN,
+                    help="context limit and bucket ceiling (default 2048: the speed-run artifacts)")
     ap.add_argument("--dry-run", action="store_true", help="print the resolved bucket set and exit")
     a = ap.parse_args()
 
     import furiosa_llm
     from furiosa_llm.artifact import ArtifactBuilder, ArtifactConfig, BucketConfig, CompilerConfig, ModelConfig, ParallelConfig
 
-    buckets = bucket_config_dict()
+    buckets = bucket_config_dict(a.max_model_len)
     rec = {
         "furiosa_llm_version": str(getattr(furiosa_llm, "__version__", None)),
         "model": a.model,
         "out": a.out,
         "tensor_parallel_size": a.tp,
-        "max_model_len": MAX_MODEL_LEN,
+        "max_model_len": a.max_model_len,
         "buckets": buckets,
         "n_buckets": {k: len(v) for k, v in buckets.items()},
         "workers": {"pipeline_builder": a.num_pipeline_builder_workers, "compile": a.num_compile_workers},
@@ -66,7 +70,7 @@ def main() -> int:
     builder = ArtifactBuilder(
         a.model,
         a.name,
-        model_config=ModelConfig(max_model_len=MAX_MODEL_LEN),
+        model_config=ModelConfig(max_model_len=a.max_model_len),
         parallel_config=ParallelConfig(tensor_parallel_size=a.tp, pipeline_parallel_size=1),
         bucket_config=BucketConfig(**{k: tuple(tuple(x) if isinstance(x, list) else x for x in v) for k, v in buckets.items()}),
         compiler_config=CompilerConfig(),

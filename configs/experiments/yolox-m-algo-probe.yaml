@@ -3,6 +3,7 @@
 # YOLOX-M on the first 1000 COCO val2017 images with algorithm policy "heuristic", closed loop N=1 (asap).
 # Purpose: record the per-convolution (algorithm, math type) table in dut.prepare; the model's DUT
 # configuration then declares it with policy "pinned". Not part of the baseline distribution.
+# The table depends on the layer shapes, not on the images, so the probe keeps the 1000-image input.
 schema_version: 1
 experiment_id: yolox-m-algo-probe
 execution_kind: actual

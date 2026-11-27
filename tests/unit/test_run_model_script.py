@@ -33,11 +33,11 @@ case $1 in
 esac
 """
 STUB_LLM = """#!/usr/bin/env bash
-# tools/llm/run_baselines.sh DEVICE MODEL with OUT and REPS: REPS speed runs and one MMLU run of that device
+# tools/llm/run_baselines.sh DEVICE MODEL with OUT and REPS: REPS speed runs and one tinyMMLU run of that device
 case $1 in gpu) s=gpu0-vllm ;; rngd) s=rngd-furiosa ;; esac
 log=$OUT/baseline-$1-$(date +%s%N).log
 for i in $(seq 1 "$REPS"); do mkdir -p "$OUT/$2.$s.speed/run-$i"; echo '{"run_status": "completed"}' >> "$log"; done
-mkdir -p "$OUT/$2.$s.mmlu/run-1"; echo '{"run_status": "completed"}' >> "$log"
+mkdir -p "$OUT/$2.$s.tinymmlu/run-1"; echo '{"run_status": "completed"}' >> "$log"
 """
 STUB_LLM_TABLE = """#!/usr/bin/env bash
 args="$*"; while [ "$1" != "--out" ]; do shift; done
@@ -86,6 +86,18 @@ def _datasets(stdout):
     return values
 
 
+def _section_datasets(stdout):
+    """A group run: {model: its dataset lines} from each "── [k/n] model" section; the start header has none."""
+    lines = stdout.splitlines()
+    first = next(i for i, line in enumerate(lines) if line.startswith("── ["))
+    assert not any(line.startswith(("  dataset ", "  datasets ")) for line in lines[:first])
+    out = {}
+    for i, line in enumerate(lines):
+        if line.startswith("── ["):
+            out[line.split("] ", 1)[1].split(" ", 1)[0]] = _datasets("\n".join(lines[i + 1:]))
+    return out
+
+
 def test_list_names_the_12_gpu_models_the_3_rngd_models_the_5_mla400_models_and_the_eagle_n_model():
     proc = _run(["list"])
     assert proc.returncode == 0 and proc.stdout.split() == MODELS + [CP_MINI] + RNGD + MLA400 + EAGLE_N
@@ -112,10 +124,14 @@ def test_dry_run_checks_every_configuration_and_writes_nothing(tmp_path):
             assert c.is_file()
     assert "all 12 (GPU)" in proc.stdout and "rngd-furiosa" not in proc.stdout
     assert proc.stdout.count("sdv_bmt.cli.table") == 9 and proc.stdout.count("sdv_bmt.llm table") == 3
-    assert _datasets(proc.stdout) == [  # under the models line, each once, as the result table writes them
-        "coco-val2017-first1000-416 (1,000 items)", "coco-val2017-first1000 (1,000 items)",
-        "cityscapes-val500 (500 items)", "nuscenes-mini-val4 (162 items)", "nuscenes-val (6,019 items)",
-        "speed-s1-s5 (synthetic token IDs)", "mmlu-1000 (1,000 items)"]
+    coco, cityscapes = ["coco-val2017 (5,000 items)"], ["cityscapes-val500 (500 items)"]
+    llm = ["speed-s1-s5 (synthetic token IDs)", "tinymmlu-100 (100 items)"]
+    assert _section_datasets(proc.stdout) == {  # per model, only its own data, as the result table writes it
+        "yolox-tiny": ["coco-val2017-416 (5,000 items)"], "yolox-s": coco, "yolox-m": coco, "yolox-l": coco,
+        "yolox-x": coco, "deeplabv3plus-r18": cityscapes, "deeplabv3plus-r50": cityscapes,
+        "deeplabv3plus-r101": cityscapes,
+        "centerpoint-pillar02": ["nuscenes-mini-val4 (162 items)", "nuscenes-val (6,019 items)"],
+        "llama-3.2-1b-instruct": llm, "llama-3.2-3b-instruct": llm, "llama-3.1-8b-instruct": llm}
 
 
 def test_flow_with_stub_commands_refuses_existing_runs_and_a_held_marker(tmp_path):
@@ -132,7 +148,7 @@ def test_flow_with_stub_commands_refuses_existing_runs_and_a_held_marker(tmp_pat
     assert "run 2/2  completed/valid" in proc.stdout and "evaluated 2 (sdv-bmt-model-metric-set-v1.1)" in proc.stdout
     assert (out / "tables" / "yolox-s.metrics.csv").is_file()
     assert "DUT service time (median) - 1.000 ms" in proc.stdout
-    assert "  models           yolox-s\n  dataset          coco-val2017-first1000 (1,000 items)\n" in proc.stdout
+    assert "  models           yolox-s\n  dataset          coco-val2017 (5,000 items)\n" in proc.stdout
     assert not mark.exists()  # the marker is released
     again = _run(["yolox-s"], env)
     assert again.returncode == 3 and "already has runs" in again.stdout
@@ -155,7 +171,8 @@ def test_mla400_dry_run_names_the_plans_the_device_and_the_compiled_models(tmp_p
         assert f"{name}: NPU /dev/aries2, compiled model " in proc.stdout and f"yolox_{short}_head9.mxq" in proc.stdout
     assert proc.stdout.count("--catalog sdv-bmt-model-metric-set-v1.1") == 5
     assert proc.stdout.count("sdv_bmt.cli.table") == 5 and "llama" not in proc.stdout
-    assert _datasets(proc.stdout) == ["coco-val2017-first1000-416 (1,000 items)", "coco-val2017-first1000 (1,000 items)"]
+    assert _section_datasets(proc.stdout) == {
+        "yolox-tiny-mla400": ["coco-val2017-416 (5,000 items)"], **{m: ["coco-val2017 (5,000 items)"] for m in MLA400[1:]}}
 
 
 def test_mla400_flow_checks_the_host_and_refuses_a_held_device(tmp_path):
@@ -203,11 +220,11 @@ def test_rngd_dry_run_runs_the_rngd_card_only(tmp_path):
         proc = _run([name, "--dry-run"], {"R": str(tmp_path / "bench")})
         assert proc.returncode == 0, proc.stdout + proc.stderr
         assert f"run_baselines.sh rngd {base}" in proc.stdout and "run_baselines.sh gpu" not in proc.stdout
-        assert f"llm/{base}.rngd-furiosa.speed" in proc.stdout and f"llm/{base}.rngd-furiosa.mmlu" in proc.stdout
+        assert f"llm/{base}.rngd-furiosa.speed" in proc.stdout and f"llm/{base}.rngd-furiosa.tinymmlu" in proc.stdout
         assert "gpu0-vllm" not in proc.stdout and f"tables/{name}.metrics.csv" in proc.stdout
-        for kind in ("speed", "mmlu"):
+        for kind in ("speed", "tinymmlu"):
             assert (REPO_ROOT / f"configs/llm/experiments/{base}.rngd-furiosa.{kind}.yaml").is_file()
-        assert _datasets(proc.stdout) == ["speed-s1-s5 (synthetic token IDs)", "mmlu-1000 (1,000 items)"]
+        assert _datasets(proc.stdout) == ["speed-s1-s5 (synthetic token IDs)", "tinymmlu-100 (100 items)"]
     assert not (tmp_path / "bench").exists()
 
 
@@ -220,17 +237,18 @@ def test_llama_flow_one_device_per_name_and_existing_runs_refused_per_device(tmp
            "LLM_BASELINES": str(tmp_path / "run_baselines.sh"), **{k: str(tmp_path / k.lower()) for k in LLM_ENV}}
     rngd = _run(["llama-3.2-1b-instruct-rngd"], env)
     assert rngd.returncode == 0, rngd.stdout + rngd.stderr
-    assert "llama-3.2-1b-instruct-rngd: rngd (speed 2 runs + MMLU 1 run)" in rngd.stdout
+    assert "llama-3.2-1b-instruct-rngd: rngd (speed 2 runs + tinyMMLU 1 run)" in rngd.stdout
+    assert "llama-3.2-1b-instruct-rngd: IRT++ not computed (set LMEVAL_PY and TINYMMLU_IRT_PKL" in rngd.stdout
     assert "llama-3.2-1b-instruct-rngd: 3/3 runs completed" in rngd.stdout
     assert len(list((out / "llm").glob("llama-3.2-1b-instruct.rngd-furiosa.speed/run-*"))) == 2
     assert not list((out / "llm").glob("*.gpu0-vllm.*"))
     table = (out / "tables" / "llama-3.2-1b-instruct-rngd.metrics.csv").read_text()
-    assert "rngd-furiosa.speed" in table and "rngd-furiosa.mmlu" in table and "gpu0-vllm" not in table
+    assert "rngd-furiosa.speed" in table and "rngd-furiosa.tinymmlu" in table and "gpu0-vllm" not in table
     gpu = _run(["llama-3.2-1b-instruct"], env)  # the RNGD runs of the model in the same R do not block the GPU
     assert gpu.returncode == 0, gpu.stdout + gpu.stderr
-    assert "llama-3.2-1b-instruct: gpu (speed 2 runs + MMLU 1 run)" in gpu.stdout
+    assert "llama-3.2-1b-instruct: gpu (speed 2 runs + tinyMMLU 1 run)" in gpu.stdout
     table = (out / "tables" / "llama-3.2-1b-instruct.metrics.csv").read_text()
-    assert "gpu0-vllm.speed" in table and "gpu0-vllm.mmlu" in table and "rngd-furiosa" not in table
+    assert "gpu0-vllm.speed" in table and "gpu0-vllm.tinymmlu" in table and "rngd-furiosa" not in table
     again = _run(["llama-3.2-1b-instruct-rngd"], env)
     assert again.returncode == 3 and "already has runs of llama-3.2-1b-instruct.rngd-furiosa" in again.stdout
 

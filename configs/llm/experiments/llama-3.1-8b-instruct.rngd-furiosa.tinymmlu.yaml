@@ -1,7 +1,7 @@
-# LLM mmlu run: llama-3.1-8b-instruct on rngd-furiosa. RNGD npu:0, furiosa-llm 2026.3, pre-compiled artifact furiosa-ai/Llama-3.1-8B-Instruct tag v2026.3 (BF16 weight/activation/KV).
+# LLM tinymmlu run: llama-3.1-8b-instruct on rngd-furiosa. RNGD npu:0, furiosa-llm 2026.3, pre-compiled artifact furiosa-ai/Llama-3.1-8B-Instruct tag v2026.3 (BF16 weight/activation/KV).
 # Host paths come from SDV_BMT_MODELS / SDV_BMT_DATASETS / SDV_BMT_CACHE (see docs/llm_benchmark.md).
 schema: sdv-bmt-llm-run/1
-experiment_id: llama-3.1-8b-instruct.rngd-furiosa.mmlu
+experiment_id: llama-3.1-8b-instruct.rngd-furiosa.tinymmlu
 execution_kind: actual
 model:
   name: llama-3.1-8b-instruct
@@ -13,8 +13,8 @@ backend:
   options: {model: furiosa-ai/Llama-3.1-8B-Instruct, revision: b678d58b0a13c9a4e94e9d235d70b53fe0d8bf32, devices: "npu:0", cache_dir: "${SDV_BMT_CACHE}/furiosa-llm"}
 device: {kind: rngd, name: FuriosaAI RNGD, index: 0}
 workload:
-  kind: mmlu
-  file: "${SDV_BMT_DATASETS}/mmlu-1000/llama-3.1-8b-instruct.prompts.jsonl"
-  sha256: b0129415cc1b683a936b07fcdf92e1c64ecb13b5f1d2e8cc4ca6c01e7ea907c3
-  items_file: ../mmlu-1000.items.json
+  kind: tinymmlu
+  file: "${SDV_BMT_DATASETS}/tinymmlu-100/llama-3.1-8b-instruct.prompts.jsonl"
+  sha256: 9b3436e1166390acb211a55ded21d97e0e5094b4539d17118f1d7a9c1267b00c
+  items_file: ../tinymmlu-100.items.json
   warmup: 3
