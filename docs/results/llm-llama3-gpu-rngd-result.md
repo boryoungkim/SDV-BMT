@@ -2,9 +2,9 @@
 
 > These are research benchmark results for two **whole systems** (runtime + driver + device), shown side by side.
 > They are not chip results and not a ranking. All times are host-observed. Device-internal time is not
-> observed. `max_observed` is the largest value in the measured population, not a worst-case bound. The MMLU
-> numbers come from a zero-shot, generation-based evaluation. They are not comparable with published 5-shot
-> log-likelihood MMLU scores.
+> observed. `max_observed` is the largest value in the measured population, not a worst-case bound. Quality is
+> tinyMMLU (100 items) evaluated as the lm-evaluation-harness task `tinyMMLU`. Its official metric is the IRT++
+> accuracy estimate, the value the harness reports; the raw accuracy over the 100 items is shown next to it.
 
 This page summarizes the evidence behind the LLM path (Python measurement plane) for three models:
 
@@ -13,20 +13,21 @@ This page summarizes the evidence behind the LLM path (Python measurement plane)
 - Llama 3.1 8B Instruct
 
 Each model ran on an NVIDIA GPU with vLLM and on a FuriosaAI RNGD card with furiosa-llm. The raw evidence bundles
-are not in the repository, because they contain outputs derived from MMLU and host-local details. No model weight
-and no MMLU question or answer is redistributed.
+are not in the repository, because they contain outputs derived from tinyMMLU (answer letters and log-likelihoods)
+and host-local details. No model weight and no tinyMMLU question or answer is redistributed.
 
-Every number below comes from the bundles and their bundle-only evaluations (catalog `sdv-bmt-llm-v1`), recorded
-on 2026-11-17. Definitions, workloads and reproduction steps are in [`docs/llm_benchmark.md`](../llm_benchmark.md).
+Every number below comes from the bundles and their bundle-only evaluations (catalog `sdv-bmt-llm-v1`). All runs
+were recorded on 2026-11-27 from an unmodified checkout of commit `cf716c4`: 15 speed runs and 3 tinyMMLU runs per
+system. The tinyMMLU runs repeat those of 2026-11-25 (commit `7a43714`) with identical results (section 2).
+Definitions, workloads and reproduction steps are in [`docs/llm_benchmark.md`](../llm_benchmark.md).
 
-Statements on this page rest on one of three kinds of evidence, labeled where it matters:
+Statements on this page rest on one of two kinds of evidence, labeled where it matters:
 
 - **Recorded:** written into a run's bundle while it ran. This covers timings, outputs, applied settings, code
   identity, configuration digest, SHA-256 of the input files and the tokenizer, RNGD artifact id, runtime
   versions and GPU UUID.
 - **Separate check:** run once with a tool in `tools/llm/`, before or after the baselines. Its result file is kept
   with the local evidence. The versions of the tool and of the packages it ran with were not recorded.
-- **Current-file comparison:** files as of 2026-11-17, after the runs, compared with the recorded values.
 
 ## Setup
 
@@ -35,10 +36,10 @@ Statements on this page rest on one of three kinds of evidence, labeled where it
 | device | NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition, one GPU (GPU 0; UUID recorded in every run) | FuriosaAI RNGD, one card (8 PEs); firmware 2026.4.0 recorded in every run |
 | runtime (recorded) | vLLM 0.31.0 (V1 engine, `AsyncLLM`), torch 2.13.0+cu130; `max_model_len` 4,096, other engine settings at vLLM defaults (chunked prefill and CUDA graphs on) | furiosa-llm 2026.3.0, token-ID stream of the engine |
 | precision | BF16, no quantization (recorded) | BF16 weights, activations and KV cache (artifact metadata) |
-| model files | meta-llama Hugging Face revisions (table below) | 1B / 3B: built locally from the same revisions, batch 1, context 2,048. 8B: `furiosa-ai/Llama-3.1-8B-Instruct` at `b678d58b` (tag `v2026.3`) |
+| model files | meta-llama Hugging Face revisions (table below) | 1B / 3B: built locally from the same revisions, batch 1, context 2,048 (speed) and 4,096 (tinyMMLU, whose longest request is 3,029 tokens). 8B: `furiosa-ai/Llama-3.1-8B-Instruct` at `b678d58b` (tag `v2026.3`), both workloads |
 | controls (read back after loading) | greedy, prefix caching off, no speculative decoding, one request at a time, in-request KV cache on | same |
-| host | shared multi-user host. Device idle was checked before every run. 1-min load average during the runs: 9.7–38.3 | same host. 1-min load average 35.8–57.8 |
-| code identity (recorded) | Python source tree `a538e105…` for all 36 runs and their evaluations | same |
+| host | shared multi-user host. Each model started only after the host was quiet (fewer than 4 busy CPUs over 30 s, three times in a row) and the host's other GPU was idle; device idle was checked before every run. 1-min load average at run start: speed runs 1.2–5.8, tinyMMLU runs 2.9–4.7 | same host and rule. Speed runs 2.5–17.3, tinyMMLU runs 5.4–6.7 |
+| code identity (recorded) | Python source tree `e6376ee7…` (commit `cf716c4`) for the 15 speed runs and the 3 tinyMMLU runs, and their evaluations | same (15 speed and 3 tinyMMLU runs) |
 
 | model | meta-llama revision |
 |---|---|
@@ -48,7 +49,7 @@ Statements on this page rest on one of three kinds of evidence, labeled where it
 
 **Inputs and weights.**
 
-- **Recorded:** both systems received identical prompt token IDs for every MMLU item (1,000 / 1,000 per model).
+- **Recorded:** both systems received identical prompt token IDs for every tinyMMLU request (400 / 400 per model).
   Every request stores the SHA-256 of its input token IDs.
 - **Separate check (tokenizer files):** the RNGD 8B artifact's tokenizer gives every one of the 128,256 token IDs
   the same meaning as the meta-llama tokenizer. Its special tokens and chat template are also identical.
@@ -69,82 +70,103 @@ All 750 measured requests produced exactly the target number of tokens with fini
 length mismatches and no errors, and every run had prefix caching confirmed off.
 
 Every measured request received exactly one token in its first stream item (n_first = 1). The RNGD system delivered
-one token per stream item. On the GPU system, 9 of its 91,190 stream items carried more than one token: 8 for 1B and 1 for 3B.
+one token per stream item. On the GPU system, 6 of its 91,194 stream items carried more than one token, all for 1B.
 
 **TTFT / TPOT, median (ms), n = 25 per cell**
 
 | model | system | S1 | S2 | S3 | S4 | S5 |
 |---|---|---|---|---|---|---|
-| Llama 3.2 1B | GPU · vLLM | 8.27 / 2.23 | 8.54 / 2.24 | 11.90 / 2.24 | 14.53 / 2.24 | 15.38 / 2.24 |
-| Llama 3.2 1B | RNGD · furiosa-llm | 6.69 / 5.15 | 6.51 / 5.22 | 12.28 / 5.08 | 18.72 / 5.10 | 20.15 / 5.16 |
-| Llama 3.2 3B | GPU · vLLM | 12.14 / 5.35 | 12.69 / 5.36 | 23.24 / 5.39 | 32.55 / 5.41 | 35.33 / 5.41 |
-| Llama 3.2 3B | RNGD · furiosa-llm | 12.33 / 9.80 | 12.61 / 9.84 | 24.73 / 9.83 | 43.05 / 9.21 | 43.13 / 9.24 |
-| Llama 3.1 8B | GPU · vLLM | 20.96 / 10.98 | 21.36 / 11.04 | 43.34 / 11.13 | 64.89 / 11.16 | 71.70 / 11.17 |
-| Llama 3.1 8B | RNGD · furiosa-llm | 21.00 / 15.69 | 20.89 / 15.80 | 45.56 / 15.86 | 84.47 / 15.84 | 87.11 / 15.83 |
+| Llama 3.2 1B | GPU · vLLM | 8.91 / 2.23 | 10.86 / 2.25 | 14.07 / 2.25 | 16.52 / 2.25 | 16.90 / 2.25 |
+| Llama 3.2 1B | RNGD · furiosa-llm | 7.70 / 5.66 | 7.50 / 5.60 | 13.23 / 5.77 | 19.86 / 5.71 | 21.12 / 5.85 |
+| Llama 3.2 3B | GPU · vLLM | 13.64 / 5.35 | 14.42 / 5.35 | 23.35 / 5.38 | 32.24 / 5.38 | 35.04 / 5.39 |
+| Llama 3.2 3B | RNGD · furiosa-llm | 13.34 / 10.48 | 13.30 / 10.33 | 26.10 / 10.39 | 44.49 / 10.35 | 45.13 / 10.45 |
+| Llama 3.1 8B | GPU · vLLM | 22.53 / 10.92 | 23.81 / 10.98 | 45.14 / 11.05 | 65.81 / 11.07 | 72.62 / 11.08 |
+| Llama 3.1 8B | RNGD · furiosa-llm | 21.85 / 16.57 | 21.92 / 16.45 | 46.22 / 16.43 | 85.28 / 16.41 | 87.41 / 16.33 |
 
 **S3 (512 / 512) in detail (ms), n = 25**
 
 | model | system | TTFT p50 | TTFT p90 | TTFT min–max | TPOT p50 | TPOT p90 | TPOT min–max | decode tokens/s p50 | run-to-run spread of TPOT |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Llama 3.2 1B | GPU · vLLM | 11.90 | 13.08 | 10.56–15.03 | 2.24 | 2.25 | 2.24–2.26 | 446 | 0.3% |
-| Llama 3.2 1B | RNGD · furiosa-llm | 12.28 | 13.57 | 11.13–13.80 | 5.08 | 5.43 | 4.54–5.64 | 197 | 9.9% |
-| Llama 3.2 3B | GPU · vLLM | 23.24 | 25.77 | 20.11–26.95 | 5.39 | 5.40 | 5.36–5.40 | 186 | 0.6% |
-| Llama 3.2 3B | RNGD · furiosa-llm | 24.73 | 26.08 | 23.65–26.90 | 9.83 | 10.01 | 8.70–10.07 | 102 | 10.9% |
-| Llama 3.1 8B | GPU · vLLM | 43.34 | 45.40 | 40.26–46.21 | 11.13 | 11.15 | 11.08–11.15 | 90 | 0.5% |
-| Llama 3.1 8B | RNGD · furiosa-llm | 45.56 | 46.04 | 44.21–46.95 | 15.86 | 16.08 | 15.52–16.20 | 63 | 2.8% |
+| Llama 3.2 1B | GPU · vLLM | 14.07 | 14.81 | 11.88–15.75 | 2.25 | 2.27 | 2.23–2.27 | 444 | 1.6% |
+| Llama 3.2 1B | RNGD · furiosa-llm | 13.23 | 13.78 | 11.31–14.07 | 5.77 | 6.02 | 5.52–6.08 | 173 | 2.4% |
+| Llama 3.2 3B | GPU · vLLM | 23.35 | 24.85 | 22.11–25.86 | 5.38 | 5.38 | 5.35–5.39 | 186 | 0.6% |
+| Llama 3.2 3B | RNGD · furiosa-llm | 26.10 | 26.66 | 25.34–26.70 | 10.39 | 10.47 | 10.06–10.64 | 96 | 1.5% |
+| Llama 3.1 8B | GPU · vLLM | 45.14 | 46.35 | 41.63–47.27 | 11.05 | 11.07 | 11.01–11.07 | 90 | 0.4% |
+| Llama 3.1 8B | RNGD · furiosa-llm | 46.22 | 46.67 | 44.42–46.90 | 16.43 | 16.50 | 16.18–16.75 | 61 | 0.4% |
 
 Percentiles are nearest-rank. p99 is not reported, because it needs at least 100 samples. The run-to-run spread is
 (largest − smallest of the five per-run TPOT medians) ÷ (median of those five medians).
 
 What the tables show, without attributing a cause:
 
-- With short inputs (S1, S2), the two systems reach the first token in similar times.
+- With short inputs (S1, S2), the RNGD system reaches the first token as fast as or faster than the GPU system.
 - With 830–1,024 input tokens (S4, S5), the RNGD system takes longer to the first token.
 - Time per output token is shorter on the GPU system for all three models.
-- Across S1–S5, the five per-run TPOT medians differ by less than 1% on the GPU system and by 2.5–14.2% on the
-  RNGD system (same spread definition as above).
+- Across S1–S5, the five per-run TPOT medians differ by 0.4–1.6% on the GPU system and by 0.4–12.8% on the RNGD
+  system (same spread definition as above).
 
-The cause of the RNGD run-to-run spread was not determined. The RNGD runs took place while the host load was
-higher, but nothing in the evidence ties the spread to that load.
+The cause of the RNGD run-to-run spread was not determined.
 
-## 2. Quality: MMLU 1,000 items, zero-shot generation-based evaluation
+**Earlier speed runs.** An earlier set of the same speed runs (2026-11-17, an earlier commit, host 1-min load
+9.7–57.8) gave GPU TPOT within 1% of the values above. The other medians were lower then: GPU TTFT by 1–27%
+(except 3B S3–S5, within 1%), RNGD TTFT by 0–15% and RNGD TPOT by 3–14%. The cause of these differences was not
+determined, so neither set is preferred as more typical of the systems.
 
-The item set is `cais/mmlu` (`all`, test split, revision `c30699e8`): 1,000 items, chosen in proportion to subject
-size. Each item is one user message in the model's chat template. Decoding is greedy, with at most 16 new tokens.
+## 2. Quality: tinyMMLU, 100 items (lm-evaluation-harness method)
 
-Every item ran on both systems (coverage 1.0). An unparsable output counts as wrong and is also reported in its own
-column.
+The item set is `tinyBenchmarks/tinyMMLU` (`all`, test split, revision `cd6a8ee9`): all 100 items. Each item's
+`input_formatted` text is the prompt, unchanged: the Open LLM Leaderboard MMLU prompt with five solved examples
+already inside, no chat template. Each answer choice `" A"` … `" D"` is one request. Its log-likelihood comes from
+the runtime's prompt log-probabilities, with the harness's tokenization, and the prediction is the first choice with
+the largest log-likelihood (`acc_norm` equals `acc` here). Details: [`docs/llm_benchmark.md`](../llm_benchmark.md),
+section 2.
 
-| model | system | correct | wrong (parsed) | unparsable | accuracy |
-|---|---|---:|---:|---:|---:|
-| Llama 3.2 1B | GPU · vLLM | 342 | 512 | 146 | 0.342 |
-| Llama 3.2 1B | RNGD · furiosa-llm | 341 | 516 | 143 | 0.341 |
-| Llama 3.2 3B | GPU · vLLM | 572 | 393 | 35 | 0.572 |
-| Llama 3.2 3B | RNGD · furiosa-llm | 574 | 391 | 35 | 0.574 |
-| Llama 3.1 8B | GPU · vLLM | 644 | 343 | 13 | 0.644 |
-| Llama 3.1 8B | RNGD · furiosa-llm | 641 | 348 | 11 | 0.641 |
+One run per model and system. The method has no sampling, so a repeat gives the same numbers: the six runs of
+2026-11-27 (1-min host load 2.9–6.7), those of 2026-11-25 (43–76) and those of 2026-11-21 (24–65), made with
+different code checkouts of the same method, have identical prompt log-probabilities for every request (403 / 403
+per run, warm-up included). The host
+load therefore does not enter these numbers. Every run scored all 100 items (all 400 requests returned
+log-probabilities).
 
-The criterion is |accuracy(RNGD) − accuracy(GPU)| ≤ 0.01 on this fixed item set. It measures total quality only.
-It does not mean the two systems compute the same numbers or produce the same output per item.
+| model | system | tinyMMLU accuracy, IRT++ estimate | raw accuracy (correct of 100) |
+|---|---|---:|---:|
+| Llama 3.2 1B | GPU · vLLM | 0.4472 | 0.43 (43) |
+| Llama 3.2 1B | RNGD · furiosa-llm | 0.4354 | 0.42 (42) |
+| Llama 3.2 3B | GPU · vLLM | 0.6305 | 0.60 (60) |
+| Llama 3.2 3B | RNGD · furiosa-llm | 0.6316 | 0.59 (59) |
+| Llama 3.1 8B | GPU · vLLM | 0.6299 | 0.61 (61) |
+| Llama 3.1 8B | RNGD · furiosa-llm | 0.6346 | 0.63 (63) |
 
-| model | difference (RNGD − GPU) | verdict | GPU correct → RNGD wrong | GPU wrong → RNGD correct | both parsed, different letters | prompt token IDs |
-|---|---:|---|---:|---:|---:|---|
-| Llama 3.2 1B | −0.001 | pass | 9 | 8 | 29 | identical |
-| Llama 3.2 3B | +0.002 | pass | 5 | 7 | 16 | identical |
-| Llama 3.1 8B | −0.003 | pass | 7 | 4 | 16 | identical |
+The IRT++ estimate is the official tinyMMLU metric: the tinyMMLU dataset card calls it the best accuracy
+estimator, and the lm-evaluation-harness task returns it. It is computed from the per-item correctness vector by
+`tools/llm/tinymmlu_irt.py` with the pinned tinyBenchmarks IRT parameters (package key `gpirt`); the tinyBenchmarks
+README gives its error on MMLU as about 0.016. The raw accuracy moves by 0.01 per item; the GPU–RNGD comparison
+below works on the items behind it.
 
-Most unparsable outputs begin with an explanation instead of a letter and reach the 16-token limit.
+**GPU–RNGD comparison.** In BF16 the choice scores move in steps of 0.0625–0.125 for these models, so when the best
+two choices are one or two steps apart, rounding alone can flip the answer. The comparison
+(`python -m sdv_bmt.llm compare`) therefore uses a near-tie rule: an item is *near-tie* when, on either system, the
+best and second-best scores are at most 0.25 apart; every other item is *clear*. The result passes when the two
+systems give the same answer on every clear item. Near-tie items are counted, not judged.
+
+| model | accuracy difference (RNGD − GPU) | clear items | clear answers that differ | near-tie items | near-tie answers that differ | largest score difference | prompt token IDs | verdict |
+|---|---:|---:|---:|---:|---:|---:|---|---|
+| Llama 3.2 1B | −0.01 | 71 | 0 | 29 | 2 | 0.414 | identical | pass |
+| Llama 3.2 3B | −0.01 | 79 | 0 | 21 | 3 | 0.248 | identical | pass |
+| Llama 3.1 8B | +0.02 | 81 | 0 | 19 | 4 | 0.358 | identical | pass |
+
+The verdict says the two systems pick the same answer wherever the answer is not decided by rounding. It is not a
+statement that they compute the same numbers. The accuracy differences come from near-tie items only.
 
 ## 3. Checks
 
 | check | kind | result |
 |---|---|---|
-| prefix caching off in the measured runs | recorded | applied setting off, per-request reused tokens 0 and hit counters unchanged in all 36 runs |
+| prefix caching off in the measured runs | recorded | applied setting off and per-request reused tokens 0 in all 30 speed runs and all 6 tinyMMLU runs; hit counters unchanged in the speed runs |
 | prefix-cache positive control | separate check (vLLM with 1B, furiosa-llm with 8B) | vLLM with caching on: the second identical request reused 1,008 tokens and the hit counter rose by 1,008. With caching off: 0 / 0. furiosa-llm with caching on: 1,023 reused tokens and 1,026 hits. With caching off: 0. Timing was used only as a diagnostic |
-| GPU path vs Hugging Face transformers (FP32, CPU), same prompt token IDs | separate check; the MMLU part compares with the recorded GPU MMLU outputs | criteria: first token ≥ 15 / 16 (any mismatch within the HF top 2), identical 32-token greedy output ≥ 12 / 16, MMLU answer agreement on the first 100 items ≥ 95. 1B: 16 / 16, 13 / 16, 95. 3B: 15 / 16, 13 / 16, 98. 8B: 16 / 16, 15 / 16, 99. All pass. The 1B MMLU agreement is exactly at the criterion |
-| independent re-scoring | separate check | a separately written scorer (`tools/llm/rescore_mmlu.py`) matched the evaluator item by item in all 6 MMLU runs |
-| re-evaluation with the published code | current code on the recorded bundles | all 36 bundles evaluated again: metrics content identical in 36 / 36. The 9 summaries recomputed from them were also identical |
-| current files vs recorded values | current-file comparison | experiment configurations (36 / 36), input files, `tokenizer.json`, RNGD artifact ids (3 / 3) and runtime versions equal the recorded values |
+| GPU path vs Hugging Face transformers (FP32, CPU), same prompt token IDs | separate check (2026-11-17) | criteria: first token ≥ 15 / 16 (any mismatch within the HF top 2), identical 32-token greedy output ≥ 12 / 16. 1B: 16 / 16, 13 / 16. 3B: 15 / 16, 13 / 16. 8B: 16 / 16, 15 / 16. All pass |
+| tinyMMLU path vs lm-evaluation-harness 0.4.13 itself (vLLM, GPU) | separate check (`tools/llm/tinymmlu_harness_check.py`) | the harness reads the same 100 documents and builds the same token IDs for all 400 requests. Predictions differ on 0–3 items per model and setting, each a tie on one side and a one-step BF16 margin (0.125) on the other; Llama 3.2 1B under batch 1 and prefix caching off: identical predictions and identical reported value |
+| code identity | recorded | the same Python source tree (`e6376ee7…`, commit `cf716c4`) in all 36 runs and in all their evaluations |
 
 ## 4. Limits
 
@@ -152,10 +174,12 @@ Most unparsable outputs begin with an explanation instead of a letter and reach 
 - The RNGD path reads token IDs from the furiosa-llm engine stream that sits under the public text-streaming API.
   That interface is not in the public furiosa-llm documentation. Its behavior was checked in smoke runs and in
   every baseline run.
-- The RNGD 1B and 3B artifacts were built for batch 1 and a 2,048-token context. The 8B artifact is the published
-  build for larger batches and contexts. Keep this difference in mind when comparing models on the RNGD system.
+- The RNGD 1B and 3B artifacts were built for batch 1 and a 2,048-token context (speed) or a 4,096-token context
+  (tinyMMLU). The 8B artifact is the published build for larger batches and contexts. Keep this difference in mind
+  when comparing models on the RNGD system.
 - With n = 25 per workload there is no p99.
-- The host was shared and loaded during the runs. The load was logged before every run.
+- The host was shared. Each model started only when the host was quiet, and the load was logged before every
+  run; the load during a run was not observed.
 - The bundles do not record the following:
   - the versions of the tools in `tools/llm/` used for the separate checks;
   - the `sdv_bmt` code used by the GPU vs Hugging Face check;

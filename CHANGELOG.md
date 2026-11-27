@@ -48,6 +48,10 @@ All notable changes to SDV-BMT are recorded here. Versions follow semantic versi
   per runtime request, per-task generation settings and scorer) meant to be reused by later generation workloads.
   `tools/llm/rngd_build.py --max-model-len`: the tinyMMLU runs of Llama 3.2 1B / 3B on RNGD use 4,096-token artifacts
   (longest request 3,029 tokens); the speed runs keep the 2,048-token artifacts.
+- **Results.** README: the GPU reference results of the five YOLOX models on all 5,000 COCO val2017 images
+  (2026-11-27), with the measurement conditions. `docs/results/llm-llama3-gpu-rngd-result.md`: tinyMMLU quality and
+  new speed runs (2026-11-27, commit `cf716c4`); the earlier speed runs are summarized for comparison. README "Other
+  GPU models": how to build the 5,000-image input.
 
 ## [1.0.0] — 2026-11-19
 
