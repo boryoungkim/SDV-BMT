@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""tinyBenchmarks estimates (IRT, p-IRT, gp-IRT) of full-MMLU accuracy from evaluated tinyMMLU runs (offline tool).
+"""tinyBenchmarks accuracy estimates (IRT, p-IRT, IRT++) from evaluated tinyMMLU runs (offline tool).
 
 The lm-evaluation-harness task ``tinyMMLU`` reports ``tinyBenchmarks.evaluate(y, "mmlu")["mmlu"]["gpirt"]`` for the
-per-item ``acc_norm`` vector ``y`` in dataset order.  This tool does the same from the bundle's evaluation
+per-item ``acc_norm`` vector ``y`` in dataset order: the IRT++ estimate of the tinyBenchmarks paper (the package
+key ``gpirt``), which the tinyMMLU dataset card calls the best accuracy estimator.  This tool does the same from the
+bundle's evaluation
 (``quality.correct_vector``).  tinyBenchmarks downloads its IRT parameter file from the repository's ``main`` branch
 into the working directory when the file is absent; here the file is pinned instead: ``--pkl`` must match
 ``IRT_PKL_SHA256`` (tinyBenchmarks commit ``TB_COMMIT``) and the estimate runs in a temporary directory that holds
@@ -13,8 +15,8 @@ and ``PYTHONPATH=src``::
 
     $LMEVAL_PY tools/llm/tinymmlu_irt.py --pkl <dir>/tinyBenchmarks.pkl --out <file.json> RUN_DIR [RUN_DIR ...]
 
-The result file can be given to ``python -m sdv_bmt.llm table ... --irt <file.json>``, which puts the gp-IRT value
-next to the raw accuracy (metric ``llm.tinymmlu.gpirt``) after matching run and evaluation IDs.
+The result file can be given to ``python -m sdv_bmt.llm table ... --irt <file.json>``, which reports the IRT++ value
+as the tinyMMLU headline (metric ``llm.tinymmlu.irtpp``) after matching run and evaluation IDs.
 """
 
 from __future__ import annotations
@@ -96,7 +98,7 @@ def main() -> int:
         results.append(row)
         print(json.dumps({k: row[k] for k in ("experiment_id", "accuracy_100", "estimate")}))
     out = {"tool": IRT_RESULT_TOOL, "tool_sha256": sha256_file(Path(__file__)),
-           "reported_value": "estimate.gpirt (what lm-evaluation-harness tinyMMLU returns)",
+           "reported_value": "estimate.gpirt (IRT++, what lm-evaluation-harness tinyMMLU returns)",
            "irt_parameters": {"file_sha256": IRT_PKL_SHA256, "source": IRT_PKL_URL}, "packages": package_versions(),
            "runs": results}
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)

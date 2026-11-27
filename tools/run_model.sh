@@ -18,7 +18,7 @@
 #   Llama models (llama-<m> on the GPU with vLLM, llama-<m>-rngd on the FuriosaAI RNGD card with furiosa-llm) also need
 #   SDV_BMT_MODELS, SDV_BMT_DATASETS, SDV_BMT_CACHE, VLLM_PY, FURIOSA_PY and HF_HOME
 #   (the cache that holds the RNGD 8B artifact), see docs/llm_benchmark.md.  With LMEVAL_PY (the lm-eval environment)
-#   and TINYMMLU_IRT_PKL (the pinned tinyBenchmarks.pkl) the table also carries the tinyMMLU gp-IRT value.
+#   and TINYMMLU_IRT_PKL (the pinned tinyBenchmarks.pkl) the table also carries the tinyMMLU IRT++ value.
 #   SDV_BMT_PREPARED_INPUT_CACHE (optional, a directory) lets later runs reuse verified preprocessing results
 #   (src/sdv_bmt/runner/prepcache.py; outside the measured interval, same prepared inputs).
 #   MLA400 models (yolox-*-mla400) run on the host of the Mobilint MLA400 card: they need the native runner
@@ -413,17 +413,17 @@ run_llama() {  # model: llama-<m> (GPU, vLLM) or llama-<m>-rngd (RNGD, furiosa-l
     say "$name: $done/$(( REPS + 1 )) runs completed (log $f)"
     if [ "$done" -ne $(( REPS + 1 )) ] || grep -q ABORT "$f"; then say "$name: incomplete, see $f"; return 1; fi
   fi
-  local irt=() irt_out=$R/llm/$m.$sfx.tinymmlu-irt.json  # the gp-IRT value next to the raw accuracy (optional)
+  local irt=() irt_out=$R/llm/$m.$sfx.tinymmlu-irt.json  # the IRT++ value, the tinyMMLU headline (optional)
   if [ -n "${LMEVAL_PY:-}" ] && [ -n "${TINYMMLU_IRT_PKL:-}" ]; then
     if [ $DRY = 1 ]; then
       echo "    + $LMEVAL_PY tools/llm/tinymmlu_irt.py --pkl $TINYMMLU_IRT_PKL --out $irt_out $R/llm/$m.$sfx.tinymmlu/run-*"
     elif ! PYTHONPATH=src "$LMEVAL_PY" tools/llm/tinymmlu_irt.py --pkl "$TINYMMLU_IRT_PKL" --out "$irt_out" \
            "$R/llm/$m.$sfx".tinymmlu/run-* >> "$LOG" 2>&1; then
-      say "$name: gp-IRT estimate failed (see $LOG)"; return 1
+      say "$name: IRT++ estimate failed (see $LOG)"; return 1
     fi
     irt=(--irt "$irt_out")
   else
-    say "$name: gp-IRT not computed (set LMEVAL_PY and TINYMMLU_IRT_PKL, docs/llm_benchmark.md)"
+    say "$name: IRT++ not computed (set LMEVAL_PY and TINYMMLU_IRT_PKL, docs/llm_benchmark.md)"
   fi
   make_table "$name" "sdv_bmt.llm table" "$R/llm/$m.$sfx".{speed,tinymmlu} "${irt[@]}"
 }

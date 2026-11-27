@@ -71,8 +71,11 @@ tinyMMLU scoring follows the harness (`output_type: multiple_choice`, lm-evaluat
 3. The prediction is the first choice with the largest log-likelihood (as numpy `argmax`). The harness metric
    `acc_norm` divides by the choice length in characters; the four lengths are equal, so it equals `acc`.
 4. The evaluation reports the raw accuracy over the 100 items (denominator always 100) and the per-item correctness
-   vector in dataset order. The value the harness reports, the tinyBenchmarks **gp-IRT** estimate of full-MMLU
-   accuracy, is computed from that vector by `tools/llm/tinymmlu_irt.py` with a pinned IRT parameter file.
+   vector in dataset order. The official tinyMMLU metric is the **IRT++ accuracy estimate**: the tinyMMLU dataset
+   card calls it the best accuracy estimator, and the lm-evaluation-harness task returns it (key `gpirt` of the
+   tinyBenchmarks package; the IRT++ method of the tinyBenchmarks paper). `tools/llm/tinymmlu_irt.py` computes it
+   from the correctness vector with a pinned IRT parameter file; it is the tinyMMLU headline of the metric table, and
+   the raw accuracy stays in the table rows.
 
 An item is scored only when all four requests completed with log-probabilities; otherwise it is `failed` and the
 evaluation is incomplete.
@@ -82,7 +85,7 @@ Equivalence with the harness was checked on the GPU for the three models with `t
 differ on 0–3 items per model and setting (Llama 3.2 1B under batch 1 and prefix caching off: identical predictions
 and the identical reported value). Every differing item is a tie on one side (equal top-two log-likelihoods, broken
 toward the first choice) and a one-step BF16 margin (0.125) on the other. The harness itself moves by one item when
-only its batching and prefix-caching settings change. On 100 items, expect 1–3 items (about 0.006 in gp-IRT)
+only its batching and prefix-caching settings change. On 100 items, expect 1–3 items (about 0.006 in IRT++)
 between implementations or execution settings.
 
 #### GPU–RNGD comparison: the near-tie rule
@@ -201,7 +204,7 @@ hf download tinyBenchmarks/tinyMMLU all/test-00000-of-00001.parquet --repo-type 
     --revision cd6a8ee9e1e6f3f18f683535f6c096c386a85da3 --local-dir <tinymmlu>
 #    (SHA-256 256f81ffdd6e64699df096c02afafba33626bfca08baed484c275e351993f317)
 curl -fL -o <irt>/tinyBenchmarks.pkl https://raw.githubusercontent.com/felipemaiapolo/tinyBenchmarks/e9a8b1031b0340571beb6c9ca3a27891be09a8fd/tinyBenchmarks/tinyBenchmarks.pkl
-#    (SHA-256 c3b6e426dfe7b100fe6d0ee960398e10a8763254bcead3be80cc6bc15abca284; the gp-IRT parameters)
+#    (SHA-256 c3b6e426dfe7b100fe6d0ee960398e10a8763254bcead3be80cc6bc15abca284; the IRT parameters)
 export HF_HUB_OFFLINE=1                        # everything below runs offline (except the harness check)
 
 # 1) tinyMMLU requests (verifies the public item list; 4 requests per item)
@@ -231,7 +234,7 @@ $LMEVAL_PY tools/llm/tinymmlu_irt.py --pkl <irt>/tinyBenchmarks.pkl --out <irt.j
 
 # 5) Metric table (docs/metric_table.md): representative metrics first, then the overall result per metric, then one row per run
 python3 -m sdv_bmt.llm table runs/llm-llama/<experiment> [...] --irt <irt.json> --out <metrics.csv>
-#    (--irt: the result file of tinymmlu_irt.py; the table then shows the raw tinyMMLU accuracy and the gp-IRT value)
+#    (--irt: the result file of tinymmlu_irt.py; the tinyMMLU headline is then its IRT++ value, else not_computed)
 ```
 
 `run_baselines.sh` writes `runs/TIMED_RUN_IN_PROGRESS` while it runs, and checks that the device is idle
@@ -243,7 +246,7 @@ before every run. GPU runs use `CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICE
 |---|---|
 | `tools/llm/rngd_smoke.py` | furiosa-llm runtime, token-ID stream, fixed length, prefix-cache control (with an `on` positive control), long inputs |
 | `tools/llm/vllm_prefix_control.py` | vLLM prefix-cache positive control (off vs on) |
-| `tools/llm/tinymmlu_harness_check.py` | tinyMMLU path vs lm-evaluation-harness 0.4.13 itself (vLLM, GPU): same documents, same token IDs for all 400 requests, per-choice log-likelihoods, predictions and reported gp-IRT value; `--sdv-bmt-conditions` runs the harness with batch 1 and prefix caching off |
+| `tools/llm/tinymmlu_harness_check.py` | tinyMMLU path vs lm-evaluation-harness 0.4.13 itself (vLLM, GPU): same documents, same token IDs for all 400 requests, per-choice log-likelihoods, predictions and reported IRT++ value; `--sdv-bmt-conditions` runs the harness with batch 1 and prefix caching off |
 | `tools/llm/hf_check.py` | vLLM BF16 vs Hugging Face transformers FP32 (CPU): first token, 32-token greedy generation, MMLU answer path on 100 items (v1.0 MMLU workload) |
 | `tools/llm/check_tokenizers.py` | the two tokenizers give token IDs the same meaning (vocabulary, special tokens, chat template, re-encoding of all MMLU prompts) |
 | `tools/llm/trace_weights.py` | per-tensor SHA-256 comparison of an RNGD artifact's parameters with the pinned Hugging Face weights |
@@ -275,7 +278,7 @@ COCO, Cityscapes and nuScenes evidence.
   per run.
 - RNGD prefill runs in 128-token buckets (up to 1,024 tokens). Longer inputs use chunked prefill. The
   locally built 1B/3B artifacts accept at most 2,048 tokens of input plus output.
-- tinyMMLU has 100 items. Its gp-IRT value estimates full-MMLU accuracy with an error of about 0.016 on MMLU in the
+- tinyMMLU has 100 items. Its IRT++ value estimates full-MMLU accuracy with an error of about 0.016 on MMLU in the
   tinyBenchmarks README; the raw 100-item accuracy moves by 0.01 per item. Near-ties between choices are common in
   BF16 (log-likelihoods move in steps of about 0.06–0.125), and each GPU–RNGD prediction difference observed so far
   involves a tie on at least one side.

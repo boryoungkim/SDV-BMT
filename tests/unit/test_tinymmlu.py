@@ -153,14 +153,16 @@ def test_fake_tinymmlu_bundle_evaluates_and_tabulates(tmp_path):
     assert m["task_request_times"]["ttft_ns"]["n"] == 12
     rows_t = build_table([tmp_path / "out" / "tm"])
     head = [r for r in rows_t if r["row"] == HEADLINE_ROW]
-    assert [r["metric_id"] for r in head] == ["llm.tinymmlu.accuracy", "llm.tinymmlu.gpirt"]
-    assert head[0]["value"] == q["accuracy"] and head[1]["value"] is None
+    assert [r["metric_id"] for r in head] == ["llm.tinymmlu.irtpp"]  # the official metric, IRT++, is the headline
+    assert head[0]["value"] is None and head[0]["status"] == "not_computed"
+    acc = [r for r in rows_t if r["row"] == "model" and r["metric_id"] == "llm.tinymmlu.accuracy"]
+    assert acc[0]["value"] == q["accuracy"]  # the raw 100-item accuracy stays in the model and run rows
     assert {r["task"] for r in rows_t} == {"llm-tinymmlu"}
     assert any(r["metric_id"] == "llm.tinymmlu.count.incorrect" for r in rows_t)
-    gp = [r for r in rows_t if r["row"] == "run" and r["metric_id"] == "llm.tinymmlu.gpirt"]
+    gp = [r for r in rows_t if r["row"] == "run" and r["metric_id"] == "llm.tinymmlu.irtpp"]
     assert gp[0]["status"] == "not_computed"
 
-    # with a gp-IRT result file of tools/llm/tinymmlu_irt.py the value is copied after matching run and evaluation
+    # with an IRT++ result file of tools/llm/tinymmlu_irt.py the value is copied after matching run and evaluation
     def irt_file(name, eval_id, sha=tinymmlu.IRT_PKL_SHA256):
         f = tmp_path / name
         f.write_text(json.dumps({"tool": tinymmlu.IRT_RESULT_TOOL, "irt_parameters": {"file_sha256": sha},
@@ -168,7 +170,7 @@ def test_fake_tinymmlu_bundle_evaluates_and_tabulates(tmp_path):
         return f
     rows_g = build_table([tmp_path / "out" / "tm"], [irt_file("irt.json", m["eval_id"])])
     head = {r["metric_id"]: r for r in rows_g if r["row"] == HEADLINE_ROW}
-    assert head["llm.tinymmlu.gpirt"]["value"] == 0.5 and head["llm.tinymmlu.gpirt"]["status"] == "valid"
+    assert head["llm.tinymmlu.irtpp"]["value"] == 0.5 and head["llm.tinymmlu.irtpp"]["status"] == "valid"
     with pytest.raises(LlmReportError, match="computed from evaluation"):
         build_table([tmp_path / "out" / "tm"], [irt_file("old.json", "eval-other")])
     with pytest.raises(LlmReportError, match="IRT parameters"):

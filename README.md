@@ -117,10 +117,10 @@ Details: [`docs/architecture.md`](docs/architecture.md), [`docs/measurement_prot
 
 | task | models | data | quality |
 |---|---|---|---|
-| 2D detection | YOLOX-Tiny, S, M, L, X | COCO val2017, first 1,000 images | COCO bbox AP |
+| 2D detection | YOLOX-Tiny, S, M, L, X | COCO val2017, first 1,000 images | COCO mAP (box, IoU 0.50:0.95) |
 | semantic segmentation | DeepLabV3+ R-18, R-50, R-101 | Cityscapes val, 500 images at 2048 × 1024 | 19-class mIoU |
 | 3D detection (LiDAR) | CenterPoint-Pillars | nuScenes: 162 mini-val samples, or all 6,019 val samples as a run series | nuScenes mAP / NDS |
-| language | Llama 3.2 1B / 3B Instruct, Llama 3.1 8B Instruct | tinyMMLU and synthetic speed inputs | tinyMMLU accuracy (lm-evaluation-harness method) |
+| language | Llama 3.2 1B / 3B Instruct, Llama 3.1 8B Instruct | tinyMMLU and synthetic speed inputs | tinyMMLU accuracy, IRT++ estimate (lm-evaluation-harness) |
 
 Each workload has a fixed contract (preprocessing, input and output layout, evaluator) shared by every device
 backend, so only the model execution differs between devices. Preprocessing that is not part of the measured path

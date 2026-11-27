@@ -23,7 +23,7 @@ tools/run_model.sh all-mla400           # the 5 MLA400 models in order, on the M
 | `REPS` | runs per model (default 5); the tinyMMLU runs and the CenterPoint val series run once |
 | `SDV_BMT_MODELS`, `SDV_BMT_DATASETS`, `SDV_BMT_CACHE`, `VLLM_PY`, `FURIOSA_PY`, `HF_HOME` | Llama models only, see `docs/llm_benchmark.md` |
 | `SDV_BMT_PREPARED_INPUT_CACHE` | optional: a directory for the prepared-input cache (`runner/prepcache.py`). Later runs reuse verified `Workload.preprocess` results of the same code, input contract and items (YOLOX on 5,000 images: about 12 minutes of preprocessing per run otherwise). Prefer a fast local disk; about 25 GB for the 640 input and 10 GB for the 416 input |
-| `LMEVAL_PY`, `TINYMMLU_IRT_PKL` | Llama models, optional: the lm-eval environment and the pinned `tinyBenchmarks.pkl`; with both, the table also carries the tinyMMLU gp-IRT value (`tools/llm/tinymmlu_irt.py`) |
+| `LMEVAL_PY`, `TINYMMLU_IRT_PKL` | Llama models, optional: the lm-eval environment and the pinned `tinyBenchmarks.pkl`; with both, the table carries the tinyMMLU headline, the IRT++ accuracy estimate (`tools/llm/tinymmlu_irt.py`); without them it is `not_computed` |
 | `MLA400_DEVICE` | MLA400 models only: the device file checked for other users (default: the device of the DUT config) |
 
 What each model runs:
@@ -97,7 +97,7 @@ SHA-256, row counts).
 │ DUT service time (median)           4.364  ms            5/5  4.360 – 4.380
 │ Output-ready latency (p99)          4.654  ms            5/5  4.643 – 4.865
 │ Deadline miss rate (output ready)  0.0000  ratio         5/5  0.0000 – 0.0000
-│ COCO box AP                        0.4289  ratio         5/5  0.4289 – 0.4289
+│ COCO mAP (box, IoU 0.50:0.95)      0.4289  ratio         5/5  0.4289 – 0.4289
 └──────────────────────────────────────────────────────────────────────────────
 
 Value = median of the valid runs; Min – Max = range of the valid run values.
@@ -138,10 +138,10 @@ empty cells mean null or not applicable.
 
 | Task | Headline rows (`metric_name` ← `metric_id`) |
 |---|---|
-| 2D detection (YOLOX) | DUT service time (median) ← `bmt.dut_service.p50`; Output-ready latency (p99) ← `bmt.output_ready.p99`; Deadline miss rate (output ready) ← `bmt.deadline.output_ready_miss_rate`; COCO box AP ← `quality.detection.conditional.ap` |
+| 2D detection (YOLOX) | DUT service time (median) ← `bmt.dut_service.p50`; Output-ready latency (p99) ← `bmt.output_ready.p99`; Deadline miss rate (output ready) ← `bmt.deadline.output_ready_miss_rate`; COCO mAP (box, IoU 0.50:0.95) ← `quality.detection.conditional.ap` |
 | Segmentation (DeepLabV3+) | the same three time metrics; Cityscapes mIoU (19 classes) ← `quality.segmentation.conditional.miou` |
 | 3D detection (CenterPoint) | the same three time metrics; nuScenes detection score (NDS) ← `quality.det3d.conditional.nds` |
-| LLM, per device | Time to first token, TTFT (S3, median) ← `llm.S3.ttft_ns.p50`; Time per output token, TPOT (S3, median) ← `llm.S3.tpot_ns.p50`; End-to-end latency (S3, median) ← `llm.S3.e2e_ns.p50` (speed experiment); tinyMMLU accuracy (100 items, lm-evaluation-harness method) ← `llm.tinymmlu.accuracy` and tinyMMLU gp-IRT estimate of MMLU accuracy ← `llm.tinymmlu.gpirt` (tinyMMLU experiment; the raw 100-item accuracy and the value the harness reports, side by side). S3 is the speed workload with 512 input and 512 output tokens |
+| LLM, per device | Time to first token, TTFT (S3, median) ← `llm.S3.ttft_ns.p50`; Time per output token, TPOT (S3, median) ← `llm.S3.tpot_ns.p50`; End-to-end latency (S3, median) ← `llm.S3.e2e_ns.p50` (speed experiment); tinyMMLU accuracy, IRT++ estimate (value lm-eval reports) ← `llm.tinymmlu.irtpp` (tinyMMLU experiment; the official tinyMMLU metric; the raw 100-item accuracy `llm.tinymmlu.accuracy` is in the model and run rows). S3 is the speed workload with 512 input and 512 output tokens |
 
 A headline row repeats the model row of its metric; the only change is ns → ms (value / 10^6). A headline metric the
 evaluation does not contain is listed with `status = not_in_evaluation`.
@@ -191,7 +191,7 @@ values are copied, nothing is recomputed.
 | `llm.<S1..S5>.<ttft_ns, tpot_ns, e2e_ns, decode_tps>.<p50, p90, p99, min, max_observed>` | `speed.<S>.<quantity>` (`p50` = `median_p50`) | performance, ns or 1/s |
 | `llm.tinymmlu.{accuracy,coverage}` | `quality.accuracy`, `quality.coverage` | task_quality, ratio |
 | `llm.tinymmlu.count.{total,correct,incorrect,failed,not_run}` | `quality.total`, `quality.counts` | task_quality, count |
-| `llm.tinymmlu.gpirt` | `estimate.gpirt` of the run in a result file of `tools/llm/tinymmlu_irt.py` given with `--irt` (run and evaluation IDs must match the table's evaluation; IRT parameter file pinned); `not_computed` without one | task_quality, ratio |
+| `llm.tinymmlu.irtpp` | IRT++ accuracy estimate: `estimate.gpirt` (the tinyBenchmarks package key) of the run in a result file of `tools/llm/tinymmlu_irt.py` given with `--irt` (run and evaluation IDs must match the table's evaluation; IRT parameter file pinned); `not_computed` without one | task_quality, ratio |
 | `llm.tinymmlu.<ttft_ns, e2e_ns>.<p50, p90, p99, min, max_observed>` | `task_request_times.<quantity>` (one request per item and choice) | performance, ns |
 | `llm.mmlu.{accuracy,coverage}` (v1.0 bundles) | `quality.accuracy`, `quality.coverage` | task_quality, ratio |
 | `llm.mmlu.count.{total,correct,incorrect_parsable,unparsable,failed,not_run}` | `quality.total`, `quality.counts` | task_quality, count |

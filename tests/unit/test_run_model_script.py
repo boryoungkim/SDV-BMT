@@ -221,7 +221,7 @@ def test_llama_flow_one_device_per_name_and_existing_runs_refused_per_device(tmp
     rngd = _run(["llama-3.2-1b-instruct-rngd"], env)
     assert rngd.returncode == 0, rngd.stdout + rngd.stderr
     assert "llama-3.2-1b-instruct-rngd: rngd (speed 2 runs + tinyMMLU 1 run)" in rngd.stdout
-    assert "llama-3.2-1b-instruct-rngd: gp-IRT not computed (set LMEVAL_PY and TINYMMLU_IRT_PKL" in rngd.stdout
+    assert "llama-3.2-1b-instruct-rngd: IRT++ not computed (set LMEVAL_PY and TINYMMLU_IRT_PKL" in rngd.stdout
     assert "llama-3.2-1b-instruct-rngd: 3/3 runs completed" in rngd.stdout
     assert len(list((out / "llm").glob("llama-3.2-1b-instruct.rngd-furiosa.speed/run-*"))) == 2
     assert not list((out / "llm").glob("*.gpu0-vllm.*"))

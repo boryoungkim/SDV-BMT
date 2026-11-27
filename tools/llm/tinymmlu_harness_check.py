@@ -7,7 +7,7 @@ For one model, with the harness's own vLLM backend (``lm_eval.models.vllm_causal
    context + continuation token IDs and the same continuation start as the SDV-BMT request file;
 2. harness run: ``simple_evaluate(tasks=["tinyMMLU"], log_samples=True)``; the documents it read must be the pinned
    items (per-item SHA-256 of the public item list), and its per-choice log-likelihoods, predictions and reported
-   value (gp-IRT) are compared with the evaluated SDV-BMT run of the same model.
+   value (IRT++) are compared with the evaluated SDV-BMT run of the same model.
 
 The harness's tinyBenchmarks aggregation runs in a temporary working directory holding only the pinned
 tinyBenchmarks.pkl (see tools/llm/tinymmlu_irt.py), so it uses the same IRT parameters.  The harness loads the

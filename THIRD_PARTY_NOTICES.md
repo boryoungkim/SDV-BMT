@@ -112,7 +112,7 @@ repository.
 | component | used by | license (declared) |
 |---|---|---|
 | Pillow 11.1.0 | `tools/stage2b_g_real/build_coco_subset.py` (JPEG decode) | MIT-CMU |
-| lm-evaluation-harness 0.4.13, tinyBenchmarks 1.0.0 (commit `e9a8b1031b0340571beb6c9ca3a27891be09a8fd`), NumPy 2.2.6, SciPy 1.15.3 (separate tools-only virtual environment with the vLLM packages) | `tools/llm/tinymmlu_irt.py` (gp-IRT estimate) and `tools/llm/tinymmlu_harness_check.py` (comparison with the harness) | MIT; MIT; BSD 3-Clause; BSD 3-Clause |
+| lm-evaluation-harness 0.4.13, tinyBenchmarks 1.0.0 (commit `e9a8b1031b0340571beb6c9ca3a27891be09a8fd`), NumPy 2.2.6, SciPy 1.15.3 (separate tools-only virtual environment with the vLLM packages) | `tools/llm/tinymmlu_irt.py` (IRT++ accuracy estimate) and `tools/llm/tinymmlu_harness_check.py` (comparison with the harness) | MIT; MIT; BSD 3-Clause; BSD 3-Clause |
 | onnxruntime 1.19.2, NumPy 2.1.2 | `tools/stage2b_g_real/validate_numerics.py` (CPU reference outputs) | MIT; BSD 3-Clause |
 | pycocotools 2.0.11 (separate tools-only virtual environment) | `tools/stage2b_g_real/coco_eval_crosscheck.py` (one-time evaluator cross-check) | BSD 2-Clause ("FreeBSD") |
 | PyTorch 2.4.1 (CPU), onnx 1.17.0 | `tools/deeplab_family/export_onnx.py` and `tools/centerpoint/export_onnx.py` (one-time ONNX export) | BSD-style; Apache License 2.0 |

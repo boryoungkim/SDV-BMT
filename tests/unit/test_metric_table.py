@@ -271,7 +271,7 @@ def test_headline_rows_come_first_with_names_and_times_in_ms():
     text = " ".join(printed.split())
     assert "Metric Value Unit Valid runs Min \u2013 Max" in text and "dataset -" in text  # no dataset given
     assert "DUT service time (median) 4.500 ms 3/3 4.000 \u2013 5.000" in text
-    assert "COCO box AP" in text and "bmt." not in text
+    assert "COCO mAP (box, IoU 0.50:0.95)" in text and "bmt." not in text
     lines = printed.splitlines()
     assert lines[0].startswith("\u250c\u2500 ") and lines[-1].startswith("\u2514\u2500")
     assert all(line.startswith("\u2502") for line in lines[1:-1])

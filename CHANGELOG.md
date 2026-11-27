@@ -26,24 +26,26 @@ All notable changes to SDV-BMT are recorded here. Versions follow semantic versi
   `tools/mobilint/set_mla400_plans.py` then points the identity and baseline plans at the new goldens. The MLA400
   identity and baseline plans now use the five NPU goldens captured on the new input, whose first 1,000 rows equal
   the 1,000-image NPU goldens (`tools/mobilint/README.md` describes the checks). The 1,000-image inputs, goldens and
-  `br-yolox-*` experiments stay for reproducing earlier results.
+  `br-yolox-*` experiments stay for reproducing earlier results. The metric table names the COCO headline
+  "COCO mAP (box, IoU 0.50:0.95)" instead of "COCO box AP"; the metric id `quality.detection.conditional.ap` and the
+  value are unchanged.
 - **LLM quality workload: tinyMMLU (100 items) evaluated as the lm-evaluation-harness task `tinyMMLU`** replaces the
   MMLU 1,000-item generation-based evaluation, whose item set SDV-BMT had selected itself. The prompt is the item's
   `input_formatted` text (no chat template); each choice `" A"`…`" D"` is one request whose continuation
   log-likelihood comes from the runtime's prompt log-probabilities (vLLM and furiosa-llm), with the harness's
   tokenization; the prediction is the first maximum (`acc_norm` = `acc` here). The evaluation reports the raw 100-item
-  accuracy and the per-item correctness vector; `tools/llm/tinymmlu_irt.py` computes the tinyBenchmarks gp-IRT value
-  the harness reports, with a pinned IRT parameter file. The GPU–RNGD comparison (`python -m sdv_bmt.llm compare`)
-  uses a near-tie rule: items whose best two choice scores are within 0.25 on either system are counted, not judged,
+  accuracy and the per-item correctness vector; `tools/llm/tinymmlu_irt.py` computes the official tinyMMLU metric,
+  the tinyBenchmarks IRT++ accuracy estimate that the harness reports, with a pinned IRT parameter file. The GPU–RNGD
+  comparison (`python -m sdv_bmt.llm compare`) uses a near-tie rule: items whose best two choice scores are within 0.25 on either system are counted, not judged,
   and the result passes when every other answer agrees (the 1,000-item accuracy rule allowed only one item of 100).
   `tools/llm/tinymmlu_harness_check.py` compares the path with lm-evaluation-harness 0.4.13 itself. New: `python -m
   sdv_bmt.llm prepare-tinymmlu`, `configs/llm/tinymmlu-100.items.json` (IDs and digests only), six `*.tinymmlu.yaml`
   experiments (the six `*.mmlu.yaml` experiments are removed; the MMLU code stays to evaluate v1.0 bundles), metric
-  names `llm.tinymmlu.*` with two headlines side by side, the raw accuracy `llm.tinymmlu.accuracy` and the gp-IRT
-  value `llm.tinymmlu.gpirt` (copied from a `tinymmlu_irt.py` result file given with `python -m sdv_bmt.llm table
-  --irt` after matching run and evaluation IDs; `tools/run_model.sh` computes it when `LMEVAL_PY` and
-  `TINYMMLU_IRT_PKL` are set). The LLM runner gains a task-workload structure (one request file row per runtime
-  request, per-task generation settings and scorer) meant to be reused by later generation workloads.
+  names `llm.tinymmlu.*` with the IRT++ estimate `llm.tinymmlu.irtpp` as the headline and the raw accuracy
+  `llm.tinymmlu.accuracy` in the table rows (the estimate is copied from a `tinymmlu_irt.py` result file given with
+  `python -m sdv_bmt.llm table --irt` after matching run and evaluation IDs; `tools/run_model.sh` computes it when
+  `LMEVAL_PY` and `TINYMMLU_IRT_PKL` are set). The LLM runner gains a task-workload structure (one request file row
+  per runtime request, per-task generation settings and scorer) meant to be reused by later generation workloads.
   `tools/llm/rngd_build.py --max-model-len`: the tinyMMLU runs of Llama 3.2 1B / 3B on RNGD use 4,096-token artifacts
   (longest request 3,029 tokens); the speed runs keep the 2,048-token artifacts.
 

@@ -7,9 +7,10 @@ from another experiment config, a run without an evaluation, an evaluation whose
 eval_manifest.json record or that was made from a different manifest.json, and MOCK and ACTUAL runs in one table.
 
 The evaluation (``metrics.json``, catalog ``sdv-bmt-llm-v1``) is nested; ``metric_records`` spreads it into metric
-records.  Values are copied; names follow ``llm.<S1..S5|mmlu|tinymmlu>.<quantity>.<statistic>``.  The tinyMMLU gp-IRT
-value (``llm.tinymmlu.gpirt``) is copied from result files of ``tools/llm/tinymmlu_irt.py`` given with ``--irt``, after
-matching the run and evaluation IDs; without one it is ``not_computed``.
+records.  Values are copied; names follow ``llm.<S1..S5|mmlu|tinymmlu>.<quantity>.<statistic>``.  The tinyMMLU IRT++
+accuracy estimate (``llm.tinymmlu.irtpp``, the value lm-evaluation-harness reports; key ``gpirt`` of the tinyBenchmarks
+package) is copied from result files of ``tools/llm/tinymmlu_irt.py`` given with ``--irt``, after matching the run and
+evaluation IDs; without one it is ``not_computed``.
 """
 
 from __future__ import annotations
@@ -145,10 +146,10 @@ def _dataset(workload: dict[str, Any], metrics: dict[str, Any]) -> Optional[str]
 
 
 def read_irt(paths: Sequence[Path | str]) -> dict[str, dict[str, Any]]:
-    """run_id -> {eval_id, gpirt, source} from result files of tools/llm/tinymmlu_irt.py (pinned IRT parameters)."""
+    """run_id -> {eval_id, irtpp, source} from result files of tools/llm/tinymmlu_irt.py (pinned IRT parameters)."""
     out: dict[str, dict[str, Any]] = {}
     for path in map(Path, paths):
-        data = _read(path, "gp-IRT file")
+        data = _read(path, "IRT++ file")
         if not isinstance(data, dict) or data.get("tool") != IRT_RESULT_TOOL:
             raise LlmReportError(f"{path.name}: not a result file of {IRT_RESULT_TOOL}")
         if (data.get("irt_parameters") or {}).get("file_sha256") != IRT_PKL_SHA256:
@@ -157,25 +158,25 @@ def read_irt(paths: Sequence[Path | str]) -> dict[str, dict[str, Any]]:
             if run["run_id"] in out:
                 raise LlmReportError(f"{path.name}: run {run['run_id']} given twice")
             est = run.get("estimate")
-            out[run["run_id"]] = {"eval_id": run["eval_id"], "gpirt": None if est is None else est.get("gpirt"),
+            out[run["run_id"]] = {"eval_id": run["eval_id"], "irtpp": None if est is None else est.get("gpirt"),
                                   "source": path.name}
     return out
 
 
 def _irt_record(metrics: dict[str, Any], run_id: str, irt: Optional[dict[str, dict[str, Any]]],
                 label: str) -> list[dict[str, Any]]:
-    """The gp-IRT record of a tinyMMLU run: copied from the matching gp-IRT file entry, else not available."""
+    """The IRT++ record of a tinyMMLU run: copied from the matching IRT++ file entry, else not available."""
     if TASK_BY_RULE.get((metrics.get("quality") or {}).get("scoring_rule")) != "tinymmlu":
         return []
     entry = (irt or {}).get(run_id)
     if entry is None:
-        return [_record("llm.tinymmlu.gpirt", "task_quality", "ratio", None, "not_computed")]
+        return [_record("llm.tinymmlu.irtpp", "task_quality", "ratio", None, "not_computed")]
     if entry["eval_id"] != metrics["eval_id"]:
         raise LlmReportError(f"{label}: {entry['source']} was computed from evaluation {entry['eval_id']}, the table "
                              f"uses {metrics['eval_id']}")
-    if entry["gpirt"] is None:
-        return [_record("llm.tinymmlu.gpirt", "task_quality", "ratio", None, "incomplete_evaluation")]
-    return [_record("llm.tinymmlu.gpirt", "task_quality", "ratio", entry["gpirt"])]
+    if entry["irtpp"] is None:
+        return [_record("llm.tinymmlu.irtpp", "task_quality", "ratio", None, "incomplete_evaluation")]
+    return [_record("llm.tinymmlu.irtpp", "task_quality", "ratio", entry["irtpp"])]
 
 
 def experiment_rows(exp_dir: Path, irt: Optional[dict[str, dict[str, Any]]] = None

@@ -16,8 +16,9 @@
   log-probability of every prompt token (``prompt_logprobs``).  The continuation log-likelihood is the sum over the
   continuation positions.
 * Reported here: the raw accuracy over the 100 items (denominator always 100) and the per-item correctness vector in
-  dataset order.  The harness's headline value, the tinyBenchmarks gp-IRT estimate of full-MMLU accuracy, is
-  computed from that vector by ``tools/llm/tinymmlu_irt.py`` (numpy / scipy, outside the measurement code).
+  dataset order.  The harness's reported value and the official tinyMMLU metric, the tinyBenchmarks IRT++ accuracy
+  estimate (key ``gpirt`` of the package), is computed from that vector by ``tools/llm/tinymmlu_irt.py`` (numpy /
+  scipy, outside the measurement code).
 """
 
 from __future__ import annotations
@@ -36,7 +37,7 @@ TARGET_DELIMITER = " "
 PROMPT_LOGPROBS = 1  # as the harness's vLLM backend requests them
 EVALUATION_LABEL = "tinyMMLU 100 items (lm-evaluation-harness tinyMMLU: log-likelihood of ' A'..' D', acc_norm)"
 SCORING_RULE_ID = "tinymmlu-harness-mc/1"
-# tinyBenchmarks IRT parameters used for the gp-IRT estimate (tools/llm/tinymmlu_irt.py writes, the LLM table reads)
+# tinyBenchmarks IRT parameters used for the IRT++ estimate (tools/llm/tinymmlu_irt.py writes, the LLM table reads)
 TB_COMMIT = "e9a8b1031b0340571beb6c9ca3a27891be09a8fd"
 IRT_PKL_SHA256 = "c3b6e426dfe7b100fe6d0ee960398e10a8763254bcead3be80cc6bc15abca284"
 IRT_RESULT_TOOL = "tools/llm/tinymmlu_irt.py"
