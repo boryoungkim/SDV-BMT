@@ -23,8 +23,10 @@ All notable changes to SDV-BMT are recorded here. Versions follow semantic versi
   rows equal the earlier goldens; the cuDNN algorithm probes keep the 1,000-image input (the table depends on layer
   shapes only). The MLA400 capture plans use the new input; `tools/mobilint/run_all_mla400.sh` writes the NPU golden
   of a first capture on a new input and compares its first 1,000 rows with the 1,000-image golden, and
-  `tools/mobilint/set_mla400_plans.py` then points the identity and baseline plans at the new goldens. The
-  1,000-image inputs, goldens and `br-yolox-*` experiments stay for reproducing earlier results.
+  `tools/mobilint/set_mla400_plans.py` then points the identity and baseline plans at the new goldens. The MLA400
+  identity and baseline plans now use the five NPU goldens captured on the new input, whose first 1,000 rows equal
+  the 1,000-image NPU goldens (`tools/mobilint/README.md` describes the checks). The 1,000-image inputs, goldens and
+  `br-yolox-*` experiments stay for reproducing earlier results.
 - **LLM quality workload: tinyMMLU (100 items) evaluated as the lm-evaluation-harness task `tinyMMLU`** replaces the
   MMLU 1,000-item generation-based evaluation, whose item set SDV-BMT had selected itself. The prompt is the item's
   `input_formatted` text (no chat template); each choice `" A"`…`" D"` is one request whose continuation

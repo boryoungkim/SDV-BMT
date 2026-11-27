@@ -13,8 +13,9 @@ Per model:
   ``tools/mobilint/run_all_mla400.sh ROOT capture``). Until then these plans keep their previous input and golden,
   so a plan never pairs an input with the golden of another input.
 
-The "first 1000" / "all 5,000" image count in the plan comments follows the input. ``--check`` writes nothing and
-exits 1 when a plan would change or a golden is missing.
+The image count in the plan comments follows the input: "the first 1000" or "the full 5,000" COCO val2017 images
+(same length, so the comment lines keep their breaks). ``--check`` writes nothing and exits 1 when a plan would
+change or a golden is missing.
 """
 
 from __future__ import annotations
@@ -28,7 +29,11 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 EXP, INPUTS, REFS = REPO / "configs" / "experiments", REPO / "configs" / "inputs", REPO / "configs" / "references"
 MODELS = ("tiny", "s", "m", "l", "x")
-COUNT_TEXT = {"coco-val2017": "all 5,000", "coco-val2017-first1000": "first 1000"}
+COUNT_WORDS = {"coco-val2017": ("full", "5,000"), "coco-val2017-first1000": ("first", "1000")}
+SEP = r"\s+(?:#\s+)?"  # a space, or a comment line break ("\n# ")
+# "the <first|full> <1000|5,000> COCO val2017 images", the words possibly split across comment lines; "all" is the
+# wording of this tool's first version ("the all 5,000").
+COUNT_PHRASE = re.compile(rf"\bthe({SEP})(?:first|full|all)({SEP})(?:1000|5,000)({SEP})COCO val2017 images")
 
 
 def input_of(base: str, model: str) -> str:
@@ -39,11 +44,11 @@ def golden_name(input_id: str, model: str) -> str:
     return f"{input_id}.yolox-{model}-coco-v1-mla400-q8.npu-capture.golden.jsonl"
 
 
-def rewrite(text: str, input_id: str, count: str | None, golden: Path | None) -> str:
+def rewrite(text: str, input_id: str, count: tuple[str, str] | None, golden: Path | None) -> str:
     text = re.sub(r"^input: \.\./inputs/[a-z0-9-]+\.yaml$", f"input: ../inputs/{input_id}.yaml", text, flags=re.M)
     if count:
-        text = re.sub(r"(first 1000|all 5,000)(\s*(?:#\s*)?)COCO val2017 images", rf"{count}\2COCO val2017 images",
-                      text)
+        word, number = count
+        text = COUNT_PHRASE.sub(lambda m: f"the{m[1]}{word}{m[2]}{number}{m[3]}COCO val2017 images", text)
     if golden is not None:
         text = re.sub(r"^(    path: \.\./references/)\S+$", rf"\g<1>{golden.name}", text, flags=re.M)
         text = re.sub(r"^(    sha256: )[0-9a-f]{64}$", rf"\g<1>{hashlib.sha256(golden.read_bytes()).hexdigest()}",
@@ -69,7 +74,7 @@ def main() -> int:
             if kind != "capture" and not golden.is_file():
                 missing.append(golden.name)
                 continue
-            new = rewrite(old, input_id, COUNT_TEXT.get(a.input), None if kind == "capture" else golden)
+            new = rewrite(old, input_id, COUNT_WORDS.get(a.input), None if kind == "capture" else golden)
             if new != old:
                 changed.append(path.name)
                 if not a.check:

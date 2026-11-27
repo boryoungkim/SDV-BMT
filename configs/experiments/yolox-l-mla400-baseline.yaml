@@ -1,5 +1,5 @@
 # YOLOX NPU port (ACTUAL, Mobilint MLA400 /dev/aries2, single core Cluster0/Core0). Baseline:
-# YOLOX-L compiled for aries-rb (8-bit, cut at the nine head convolutions, head tail on the host) on the all 5,000
+# YOLOX-L compiled for aries-rb (8-bit, cut at the nine head convolutions, head tail on the host) on the full 5,000
 # COCO val2017 images, nominal (no stress), N=1, queue 0, drop_new, 32 untimed precondition requests, fixed rate
 # 30 Hz (the GPU family rate), deadline = frame period. Output reference = the model's NPU capture golden
 # (determinism/corruption diagnostic only). Same plan as yolox-l-baseline.yaml except workload, DUT,
