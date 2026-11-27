@@ -155,7 +155,7 @@ def test_mla400_dry_run_names_the_plans_the_device_and_the_compiled_models(tmp_p
         assert f"{name}: NPU /dev/aries2, compiled model " in proc.stdout and f"yolox_{short}_head9.mxq" in proc.stdout
     assert proc.stdout.count("--catalog sdv-bmt-model-metric-set-v1.1") == 5
     assert proc.stdout.count("sdv_bmt.cli.table") == 5 and "llama" not in proc.stdout
-    assert _datasets(proc.stdout) == ["coco-val2017-first1000-416 (1,000 items)", "coco-val2017-first1000 (1,000 items)"]
+    assert _datasets(proc.stdout) == ["coco-val2017-416 (5,000 items)", "coco-val2017 (5,000 items)"]
 
 
 def test_mla400_flow_checks_the_host_and_refuses_a_held_device(tmp_path):
